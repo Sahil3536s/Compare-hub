@@ -1,0 +1,41 @@
+spring:
+  application:
+    name: comparehub-backend
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:dev}
+
+server:
+  port: ${PORT:8080}
+
+# Common ranking weights configuration
+app:
+  ranking:
+    product:
+      price-weight: 0.40
+      rating-weight: 0.20
+      discount-weight: 0.15
+      delivery-weight: 0.15
+      trust-weight: 0.10
+    flight:
+      price-weight: 0.50
+      duration-weight: 0.30
+      stops-weight: 0.20
+    ride:
+      fare-weight: 0.60
+      eta-weight: 0.40
+
+# Resilience4j Defaults
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        failureRateThreshold: 50
+        waitDurationInOpenState: 10000ms
+        permittedNumberOfCallsInHalfOpenState: 3
+  retry:
+    configs:
+      default:
+        maxAttempts: 2
+        waitDuration: 500ms

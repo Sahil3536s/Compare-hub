@@ -1,0 +1,68 @@
+# Production Profile Configuration (Render, Railway, AWS)
+spring:
+  datasource:
+    url: ${DATABASE_URL:${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/comparehub}}
+    username: ${SPRING_DATASOURCE_USERNAME:${DB_USERNAME:postgres}}
+    password: ${SPRING_DATASOURCE_PASSWORD:${DB_PASSWORD:postgres}}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: ${DB_POOL_MAX:10}
+      minimum-idle: ${DB_POOL_MIN:2}
+      idle-timeout: 300000
+      max-lifetime: 1800000
+      connection-timeout: 10000
+      leak-detection-threshold: 20000
+
+  jpa:
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    open-in-view: false
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+    validate-on-migrate: true
+
+  data:
+    redis:
+      url: ${REDIS_URL:${SPRING_DATA_REDIS_URL:}}
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      timeout: 3000ms
+
+  cache:
+    cache-names: product-comparisons,flight-searches,geocoding-locations,provider-metadata,provider-health
+
+app:
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:https://comparehub.vercel.app,https://comparehub-app.vercel.app}
+  jwt:
+    secret: ${JWT_SECRET}
+    expiration-ms: ${JWT_EXPIRATION_MS:86400000}
+  cache:
+    redis:
+      enabled: ${REDIS_ENABLED:true}
+  providers:
+    amazon:
+      enabled: ${PROVIDER_AMAZON_ENABLED:true}
+      api-key: ${AMAZON_API_KEY:}
+      api-url: ${AMAZON_API_URL:https://api.amazon.com/affiliate/v1}
+      timeout-ms: ${AMAZON_TIMEOUT_MS:4000}
+    flipkart:
+      enabled: ${PROVIDER_FLIPKART_ENABLED:true}
+      api-key: ${FLIPKART_API_KEY:}
+      api-url: ${FLIPKART_API_URL:https://affiliate-api.flipkart.net/v1}
+      timeout-ms: ${FLIPKART_TIMEOUT_MS:4000}
+    croma:
+      enabled: ${PROVIDER_CROMA_ENABLED:true}
+      api-key: ${CROMA_API_KEY:}
+      api-url: ${CROMA_API_URL:https://api.croma.com/v1}
+      timeout-ms: ${CROMA_TIMEOUT_MS:4000}
+    open-products:
+      enabled: ${PROVIDER_OPEN_PRODUCTS_ENABLED:true}
+      api-url: ${OPEN_PRODUCTS_API_URL:https://dummyjson.com/products/search}
+      timeout-ms: ${OPEN_PRODUCTS_TIMEOUT_MS:4000}
