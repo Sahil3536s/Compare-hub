@@ -14,6 +14,6 @@ CREATE INDEX IF NOT EXISTS idx_notifications_user_unread ON notifications (user_
 
 -- 4. User Personalization & History
 CREATE INDEX IF NOT EXISTS idx_saved_products_user_created ON saved_products (user_id, created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_search_history_user_time ON search_history (user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_search_history_user_time ON search_histories (user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_flight_searches_user_time ON flight_searches (user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_ride_searches_user_time ON ride_searches (user_id, created_at DESC);
