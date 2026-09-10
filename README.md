@@ -122,6 +122,23 @@
    }
    ```
 
+5. From now on, you don't need to run Maven manually. You can start everything with:
+
+docker compose up -d
+
+stop everything with:
+
+docker compose down
+
+and check status with:
+
+docker ps
+
+If you changed code and want Docker to rebuild it:
+
+docker compose up -d --build
+
+
 ---
 
 ### 4. Running Frontend Locally
