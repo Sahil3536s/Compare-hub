@@ -33,3 +33,16 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 *.log
+
+# Python & ML Service
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+ENV/
+env/
+

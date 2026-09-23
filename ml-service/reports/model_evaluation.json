@@ -1,0 +1,52 @@
+{
+  "generated_at": "2026-09-10T06:37:47.112793+00:00",
+  "dataset": {
+    "total_observations": 1368,
+    "products_count": 12,
+    "training_samples": 1094,
+    "test_samples": 274,
+    "train_period_start": "2026-05-13",
+    "train_period_end": "2026-08-12",
+    "test_period_start": "2026-08-12",
+    "test_period_end": "2026-09-03"
+  },
+  "features": [
+    "current_price",
+    "avg_price_3d",
+    "avg_price_7d",
+    "avg_price_14d",
+    "avg_price_30d",
+    "min_price_7d",
+    "min_price_30d",
+    "max_price_7d",
+    "max_price_30d",
+    "median_price_7d",
+    "median_price_30d",
+    "std_price_7d",
+    "std_price_30d",
+    "price_change_1d",
+    "price_change_7d",
+    "percentage_change_7d",
+    "rolling_trend",
+    "day_of_week",
+    "day_of_month",
+    "month",
+    "number_of_price_changes"
+  ],
+  "target": "future_price_7d",
+  "prediction_horizon_days": 7,
+  "models": {
+    "LinearRegression": {
+      "mae": 1556.5648,
+      "rmse": 2195.8962,
+      "r2": 0.996576
+    },
+    "RandomForestRegressor": {
+      "mae": 1757.8433,
+      "rmse": 2431.9042,
+      "r2": 0.9958
+    }
+  },
+  "selected_model": "LinearRegression",
+  "selection_reason": "Linear Regression achieved lower MAE on the chronological test set."
+}

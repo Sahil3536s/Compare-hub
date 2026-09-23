@@ -1,6 +1,294 @@
 import React, { useState, useEffect } from 'react';
 import { getProductPriceHistory } from '../services/productService';
+import { getProductPrediction } from '../services/predictionService';
 import PurchaseTimingCard from './PurchaseTimingCard';
+
+// ─── ML Prediction Section ──────────────────────────────────────────────────
+
+const RecommendationBadge = ({ recommendation }) => {
+  const config = {
+    BUY_NOW: {
+      bg: 'bg-emerald-500',
+      text: 'text-white',
+      label: '✅ BUY NOW',
+      border: 'border-emerald-600',
+    },
+    WAIT: {
+      bg: 'bg-amber-500',
+      text: 'text-white',
+      label: '⏳ WAIT',
+      border: 'border-amber-600',
+    },
+    HOLD: {
+      bg: 'bg-slate-500',
+      text: 'text-white',
+      label: '🔄 HOLD',
+      border: 'border-slate-600',
+    },
+  };
+  const c = config[recommendation] || config.HOLD;
+  return (
+    <span
+      className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-black tracking-wide border ${c.bg} ${c.text} ${c.border}`}
+    >
+      {c.label}
+    </span>
+  );
+};
+
+const DealQualityBadge = ({ dealQuality }) => {
+  const config = {
+    GOOD_DEAL: { bg: 'bg-emerald-100', text: 'text-emerald-800', label: '🏷️ Good Deal' },
+    NORMAL_PRICE: { bg: 'bg-slate-100', text: 'text-slate-700', label: '📊 Normal Price' },
+    EXPENSIVE: { bg: 'bg-rose-100', text: 'text-rose-800', label: '⚠️ Expensive' },
+  };
+  const c = config[dealQuality] || config.NORMAL_PRICE;
+  return (
+    <span className={`inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-bold ${c.bg} ${c.text}`}>
+      {c.label}
+    </span>
+  );
+};
+
+const ConfidenceDot = ({ label }) => {
+  const config = {
+    High: 'bg-emerald-500',
+    Medium: 'bg-amber-500',
+    Low: 'bg-rose-500',
+  };
+  return (
+    <span className="flex items-center gap-1.5 text-xs text-slate-400">
+      <span className={`inline-block w-2 h-2 rounded-full ${config[label] || 'bg-slate-400'}`} />
+      {label} Confidence
+    </span>
+  );
+};
+
+const MLPredictionSection = ({ productId }) => {
+  const [prediction, setPrediction] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState(false);
+
+  useEffect(() => {
+    if (!productId) return;
+    setLoading(true);
+    setFetchError(false);
+    getProductPrediction(productId)
+      .then((data) => setPrediction(data))
+      .catch(() => setFetchError(true))
+      .finally(() => setLoading(false));
+  }, [productId]);
+
+  // ── Loading ──
+  if (loading) {
+    return (
+      <div className="border-t border-slate-100 pt-5 mt-2 space-y-3">
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-bold text-violet-600 uppercase tracking-wider bg-violet-50 px-2.5 py-1 rounded-md">
+            🤖 ML Price Prediction
+          </span>
+        </div>
+        <div className="flex items-center gap-3 text-xs text-slate-400">
+          <div className="animate-spin w-4 h-4 border-2 border-violet-500 border-t-transparent rounded-full" />
+          Analysing price patterns…
+        </div>
+      </div>
+    );
+  }
+
+  // ── Network / fetch error ──
+  if (fetchError) {
+    return (
+      <div className="border-t border-slate-100 pt-5 mt-2">
+        <div className="flex items-center gap-2 mb-3">
+          <span className="text-[10px] font-bold text-violet-600 uppercase tracking-wider bg-violet-50 px-2.5 py-1 rounded-md">
+            🤖 ML Price Prediction
+          </span>
+        </div>
+        <div className="bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-xl p-3">
+          Could not reach the prediction service. Please try again later.
+        </div>
+      </div>
+    );
+  }
+
+  const status = prediction?.status;
+
+  // ── Insufficient data ──
+  if (status === 'INSUFFICIENT_DATA') {
+    return (
+      <div className="border-t border-slate-100 pt-5 mt-2">
+        <div className="flex items-center gap-2 mb-3">
+          <span className="text-[10px] font-bold text-violet-600 uppercase tracking-wider bg-violet-50 px-2.5 py-1 rounded-md">
+            🤖 ML Price Prediction
+          </span>
+        </div>
+        <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl text-center">
+          <p className="text-2xl mb-2">📈</p>
+          <p className="text-sm font-bold text-slate-700">Not enough price history yet</p>
+          <p className="text-xs text-slate-400 mt-1">
+            {prediction?.message ||
+              'More price observations are needed before a reliable ML prediction can be generated.'}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // ── ML service down ──
+  if (status === 'ML_UNAVAILABLE' || status === 'MODEL_NOT_LOADED') {
+    return (
+      <div className="border-t border-slate-100 pt-5 mt-2">
+        <div className="flex items-center gap-2 mb-3">
+          <span className="text-[10px] font-bold text-violet-600 uppercase tracking-wider bg-violet-50 px-2.5 py-1 rounded-md">
+            🤖 ML Price Prediction
+          </span>
+        </div>
+        <div className="bg-amber-50 border border-amber-200 p-3.5 rounded-2xl flex items-start gap-3">
+          <span className="text-lg shrink-0">⚙️</span>
+          <div>
+            <p className="text-xs font-bold text-amber-900">Prediction temporarily unavailable</p>
+            <p className="text-[11px] text-amber-700 mt-0.5">
+              {prediction?.message ||
+                'The ML service is temporarily unavailable. All other comparison features continue to work normally.'}
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Success ──
+  if (status !== 'SUCCESS') return null;
+
+  const fmt = (n) => (n != null ? Number(n).toLocaleString('en-IN') : '—');
+  const fmtPct = (n) => (n != null ? `${n > 0 ? '+' : ''}${Number(n).toFixed(2)}%` : '—');
+
+  const changeIsPositive = prediction.predictedChangePercent > 0;
+  const changeIsNegative = prediction.predictedChangePercent < 0;
+  const changeColor = changeIsPositive
+    ? 'text-rose-600'
+    : changeIsNegative
+    ? 'text-emerald-600'
+    : 'text-slate-500';
+  const changeArrow = changeIsPositive ? '↑' : changeIsNegative ? '↓' : '→';
+
+  return (
+    <div className="border-t border-slate-100 pt-5 mt-2 space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <span className="text-[10px] font-bold text-violet-600 uppercase tracking-wider bg-violet-50 px-2.5 py-1 rounded-md">
+          🤖 ML Price Prediction
+        </span>
+        {prediction.confidenceLabel && (
+          <ConfidenceDot label={prediction.confidenceLabel} />
+        )}
+      </div>
+
+      {/* Main Prediction Cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+        {/* Current Price */}
+        <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100 text-center sm:text-left">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+            Current Price
+          </span>
+          <span className="text-sm sm:text-base font-black text-slate-900 font-mono mt-0.5 block">
+            ₹{fmt(prediction.currentPrice)}
+          </span>
+        </div>
+
+        {/* Estimated Price in 7 Days */}
+        <div className="bg-violet-50 p-3 rounded-2xl border border-violet-100 text-center sm:text-left">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-violet-700 block">
+            Est. Price in 7d
+          </span>
+          <span className="text-sm sm:text-base font-black text-violet-900 font-mono mt-0.5 block">
+            ₹{fmt(prediction.predictedPrice7d)}
+          </span>
+        </div>
+
+        {/* Estimated Change */}
+        <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100 text-center sm:text-left">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+            Est. Change
+          </span>
+          <span className={`text-sm sm:text-base font-black font-mono mt-0.5 block ${changeColor}`}>
+            {changeArrow} ₹{fmt(Math.abs(prediction.predictedChange))}
+          </span>
+          <span className={`text-[11px] font-bold ${changeColor}`}>
+            {fmtPct(prediction.predictedChangePercent)}
+          </span>
+        </div>
+
+        {/* Deal Quality */}
+        <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100 text-center sm:text-left flex flex-col justify-center gap-1.5">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+            Deal Quality
+          </span>
+          {prediction.dealQuality && (
+            <DealQualityBadge dealQuality={prediction.dealQuality} />
+          )}
+        </div>
+      </div>
+
+      {/* Recommendation Banner */}
+      {prediction.recommendation && (
+        <div
+          className={`p-4 rounded-2xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 ${
+            prediction.recommendation === 'BUY_NOW'
+              ? 'bg-emerald-50 border-emerald-200'
+              : prediction.recommendation === 'WAIT'
+              ? 'bg-amber-50 border-amber-200'
+              : 'bg-slate-50 border-slate-200'
+          }`}
+        >
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs font-bold text-slate-600">Recommendation:</span>
+              <RecommendationBadge recommendation={prediction.recommendation} />
+            </div>
+            {prediction.recommendationReason && (
+              <p className="text-xs text-slate-600 leading-relaxed">
+                {prediction.recommendationReason}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Estimated Range */}
+      {prediction.predictedPriceLow != null && prediction.predictedPriceHigh != null && (
+        <div className="bg-slate-900 text-white p-4 rounded-2xl border border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div className="space-y-0.5">
+            <span className="text-[10px] font-bold text-violet-400 uppercase tracking-wider block">
+              Estimated Price Range (7d)
+            </span>
+            <span className="text-sm font-mono font-bold text-white">
+              ₹{fmt(prediction.predictedPriceLow)} – ₹{fmt(prediction.predictedPriceHigh)}
+            </span>
+          </div>
+          <div className="text-right shrink-0">
+            <span className="text-[10px] text-slate-400 block uppercase">Model</span>
+            <span className="text-xs font-mono font-bold text-violet-300">
+              {prediction.modelName || '—'}
+            </span>
+            {prediction.modelVersion && (
+              <span className="text-[10px] text-slate-500 block">v{prediction.modelVersion}</span>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Disclaimer */}
+      <p className="text-[10px] text-slate-400 text-center leading-relaxed">
+        Based on historical price patterns. Predicted prices are estimates, not guaranteed future prices.
+        Deal quality classification is statistical, not ML-based.
+      </p>
+    </div>
+  );
+};
+
+// ─── Main Modal ─────────────────────────────────────────────────────────────
 
 export const PriceHistoryModal = ({ isOpen, onClose, product }) => {
   const [period, setPeriod] = useState('30D'); // '7D', '30D', '90D'
@@ -41,6 +329,9 @@ export const PriceHistoryModal = ({ isOpen, onClose, product }) => {
   }, [isOpen, product, period]);
 
   if (!isOpen || !product) return null;
+
+  // Derive numeric product ID for prediction
+  const productId = product.id || Math.abs((product.productName || 'prod').hashCode() % 500) || 1;
 
   // Chart coordinate calculations
   const pricePoints = data?.pricePoints || [];
@@ -274,6 +565,9 @@ export const PriceHistoryModal = ({ isOpen, onClose, product }) => {
                 <span>{points[points.length - 1]?.date || 'Today'}</span>
               </div>
             </div>
+
+            {/* ── ML Price Prediction Section ─────────────────────────────── */}
+            <MLPredictionSection productId={productId} />
 
           </>
         )}

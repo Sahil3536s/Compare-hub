@@ -35,6 +35,33 @@ services:
       timeout: 5s
       retries: 5
 
+  # FastAPI ML Price Prediction Service
+  ml-service:
+    build:
+      context: ./ml-service
+      dockerfile: Dockerfile
+    container_name: comparehub-ml
+    restart: unless-stopped
+    environment:
+      ML_SERVICE_HOST: 0.0.0.0
+      ML_SERVICE_PORT: 8000
+      MIN_HISTORY_POINTS: 20
+      BUY_WAIT_THRESHOLD_PCT: 2.5
+      MODEL_PATH: models/price_predictor.joblib
+      METADATA_PATH: models/model_metadata.json
+    ports:
+      - "8000:8000"
+    volumes:
+      # Mount pre-trained models directory (read-only at runtime)
+      # Train offline with: python -m training.train --dataset data/training_dataset.csv
+      - ./ml-service/models:/app/models
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
   # Spring Boot Backend API
   backend:
     build:
@@ -47,6 +74,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      ml-service:
+        condition: service_started
     environment:
       PORT: 8080
       SPRING_PROFILES_ACTIVE: prod
@@ -58,6 +87,9 @@ services:
       REDIS_ENABLED: "true"
       JWT_SECRET: "404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970"
       CORS_ALLOWED_ORIGINS: "http://localhost:3000,http://localhost:5173,http://localhost"
+      # ML Service URL — uses Docker service name (internal Docker network)
+      ML_SERVICE_URL: http://ml-service:8000
+      MIN_HISTORY_POINTS: 20
     ports:
       - "8080:8080"
 
