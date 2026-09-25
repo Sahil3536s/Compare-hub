@@ -37,6 +37,7 @@ public class PricePredictionResponseDto {
      * IMPORTANT: This is an estimate, not a guaranteed future price.
      */
     private BigDecimal predictedPrice7d;
+    private BigDecimal predictedPrice7Days;
 
     /** Estimated absolute change from current to predicted price. */
     private BigDecimal predictedChange;
@@ -55,9 +56,11 @@ public class PricePredictionResponseDto {
 
     /** Lower bound of the estimated price interval. */
     private BigDecimal predictedPriceLow;
+    private BigDecimal predictionRangeLow;
 
     /** Upper bound of the estimated price interval. */
     private BigDecimal predictedPriceHigh;
+    private BigDecimal predictionRangeHigh;
 
     /**
      * Statistical deal quality: GOOD_DEAL, NORMAL_PRICE, or EXPENSIVE.
@@ -67,6 +70,7 @@ public class PricePredictionResponseDto {
 
     /** Name of the model used for prediction (e.g., RandomForestRegressor). */
     private String modelName;
+    private String model;
 
     /** Model version identifier. */
     private String modelVersion;

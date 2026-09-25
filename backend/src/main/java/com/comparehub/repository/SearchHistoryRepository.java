@@ -12,7 +12,13 @@ public interface SearchHistoryRepository extends JpaRepository<SearchHistory, Lo
 
     List<SearchHistory> findByUserIdOrderByCreatedAtDesc(Long userId);
 
+    List<SearchHistory> findByUserIdOrderByCreatedAtAsc(Long userId);
+
+    List<SearchHistory> findTop10ByUserIdOrderByCreatedAtDesc(Long userId);
+
     List<SearchHistory> findByUserIdAndSearchTypeOrderByCreatedAtDesc(Long userId, SearchType searchType);
+
+    List<SearchHistory> findTop5ByUserIdAndSearchTypeOrderByCreatedAtDesc(Long userId, SearchType searchType);
 
     void deleteByUserId(Long userId);
 

@@ -8,7 +8,11 @@ export const searchProducts = async ({
   minPrice = '',
   maxPrice = '',
   inStock = '',
-  sortBy = 'price_asc',
+  sortBy = 'best',
+  minRating = '',
+  ram = '',
+  storage = '',
+  delivery = '',
 } = {}) => {
   const params = {};
   if (query) params.q = query;
@@ -19,9 +23,13 @@ export const searchProducts = async ({
   if (maxPrice) params.maxPrice = maxPrice;
   if (inStock !== '') params.inStock = inStock;
   if (sortBy) params.sortBy = sortBy;
+  if (minRating) params.minRating = minRating;
+  if (ram && ram !== 'all') params.ram = ram;
+  if (storage && storage !== 'all') params.storage = storage;
+  if (delivery && delivery !== 'all') params.delivery = delivery;
 
   const response = await apiClient.get('/products/search', { params });
-  return response.data; // { query, totalOffers, cheapestPrice, cheapestMerchant, offers: [...] }
+  return response.data; // { query, totalOffers, cheapestPrice, cheapestMerchant, offers: [...], failedProviders: [...] }
 };
 
 export const getProductPriceHistory = async (productId, period = '30D') => {

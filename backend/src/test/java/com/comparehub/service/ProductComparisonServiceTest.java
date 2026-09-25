@@ -114,5 +114,6 @@ class ProductComparisonServiceTest {
         assertNotNull(result);
         assertEquals(1, result.getTotalOffers());
         assertEquals("Flipkart", result.getOffers().get(0).getMerchant());
+        assertTrue(result.getFailedProviders().contains("Amazon"));
     }
 }

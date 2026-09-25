@@ -24,10 +24,17 @@ public class ProductComparisonController {
             @RequestParam(name = "minPrice", required = false) BigDecimal minPrice,
             @RequestParam(name = "maxPrice", required = false) BigDecimal maxPrice,
             @RequestParam(name = "inStock", required = false) Boolean inStock,
-            @RequestParam(name = "sortBy", required = false, defaultValue = "price_asc") String sortBy) {
+            @RequestParam(name = "sortBy", required = false, defaultValue = "price_asc") String sortBy,
+            @RequestParam(name = "minRating", required = false) Double minRating,
+            @RequestParam(name = "ram", required = false) String ram,
+            @RequestParam(name = "storage", required = false) String storage,
+            @RequestParam(name = "delivery", required = false) String delivery) {
 
-        ProductComparisonResponseDto result = productComparisonService.compareProducts(
-                query, merchant, brand, category, minPrice, maxPrice, inStock, sortBy);
+        ProductComparisonResponseDto result = (minRating != null || ram != null || storage != null || delivery != null)
+                ? productComparisonService.compareProducts(
+                        query, merchant, brand, category, minPrice, maxPrice, inStock, sortBy, minRating, ram, storage, delivery)
+                : productComparisonService.compareProducts(
+                        query, merchant, brand, category, minPrice, maxPrice, inStock, sortBy);
 
         return ResponseEntity.ok(result);
     }

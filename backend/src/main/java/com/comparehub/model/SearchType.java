@@ -3,5 +3,6 @@ package com.comparehub.model;
 public enum SearchType {
     SHOPPING,
     FLIGHTS,
-    RIDES
+    RIDES,
+    PRODUCT_COMPARE
 }

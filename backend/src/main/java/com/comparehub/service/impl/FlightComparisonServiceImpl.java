@@ -30,15 +30,21 @@ public class FlightComparisonServiceImpl implements FlightComparisonService {
     @Override
     @Cacheable(
             value = "flight-searches",
-            key = "#request.origin + '_' + #request.destination + '_' + #request.departureDate + '_' + #request.cabinClass + '_' + #request.maxStops + '_' + #request.airline + '_' + #request.maxPrice + '_' + #request.timeOfDay + '_' + #request.sortBy",
+            key = "#request.origin + '_' + #request.destination + '_' + #request.departureDate + '_' + #request.cabinClass + '_' + #request.maxStops + '_' + #request.airline + '_' + #request.maxPrice + '_' + #request.maxDurationMinutes + '_' + #request.timeOfDay + '_' + #request.sortBy",
             unless = "#result == null || #result.offers.isEmpty()"
     )
     public FlightComparisonResponseDto compareFlights(FlightSearchRequestDto request) {
         log.info("Performing flight search comparison: {} -> {} on date: {}",
                 request.getOrigin(), request.getDestination(), request.getDepartureDate());
 
+        if (request.getOrigin() != null && request.getDestination() != null
+                && request.getOrigin().trim().equalsIgnoreCase(request.getDestination().trim())) {
+            throw new IllegalArgumentException("Origin and destination airports must be different.");
+        }
+
         // 1. Gather offers from all registered flight providers
         List<NormalizedFlightOfferDto> rawOffers = new ArrayList<>();
+        List<String> failedProviders = new ArrayList<>();
         for (FlightProvider provider : flightProviders) {
             try {
                 List<NormalizedFlightOfferDto> results = provider.searchFlights(request);
@@ -48,6 +54,7 @@ public class FlightComparisonServiceImpl implements FlightComparisonService {
             } catch (Exception e) {
                 log.error("Flight provider '{}' failed during search: {}. Continuing with remaining providers.",
                         provider.getProviderName(), e.getMessage());
+                failedProviders.add(provider.getProviderName());
             }
         }
 
@@ -66,6 +73,11 @@ public class FlightComparisonServiceImpl implements FlightComparisonService {
                     }
                     // Max price filter
                     if (request.getMaxPrice() != null && offer.getPrice().compareTo(request.getMaxPrice()) > 0) {
+                        return false;
+                    }
+                    // Max duration filter
+                    if (request.getMaxDurationMinutes() != null && offer.getDurationMinutes() != null
+                            && offer.getDurationMinutes() > request.getMaxDurationMinutes()) {
                         return false;
                     }
                     // Time of day filter
@@ -118,6 +130,7 @@ public class FlightComparisonServiceImpl implements FlightComparisonService {
                 .fastestDurationMinutes(fastestDuration)
                 .bestAirline(bestOffer != null ? bestOffer.getAirline() : null)
                 .offers(rankedOffers)
+                .failedProviders(failedProviders)
                 .aiRecommendation(aiRecommendation)
                 .rankingSummary(flightRankingService.getRankingSummary(rankedOffers))
                 .build();
@@ -128,10 +141,10 @@ public class FlightComparisonServiceImpl implements FlightComparisonService {
         try {
             int hour = Integer.parseInt(departureTime.split(":")[0].trim());
             return switch (timeOfDay.toLowerCase().trim()) {
-                case "morning" -> hour >= 5 && hour < 12;
-                case "afternoon" -> hour >= 12 && hour < 18;
-                case "evening" -> hour >= 18 && hour <= 23;
-                case "night" -> hour >= 0 && hour < 5;
+                case "before_6am", "before6am", "night" -> hour < 6;
+                case "6am_12pm", "6am-12pm", "morning" -> hour >= 6 && hour < 12;
+                case "12pm_6pm", "12pm-6pm", "afternoon" -> hour >= 12 && hour < 18;
+                case "after_6pm", "after6pm", "evening" -> hour >= 18;
                 default -> true;
             };
         } catch (Exception e) {

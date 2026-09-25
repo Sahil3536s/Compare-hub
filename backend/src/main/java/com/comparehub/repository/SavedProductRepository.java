@@ -12,6 +12,8 @@ public interface SavedProductRepository extends JpaRepository<SavedProduct, Long
 
     List<SavedProduct> findByUserId(Long userId);
 
+    List<SavedProduct> findByUserIdOrderByCreatedAtDesc(Long userId);
+
     Optional<SavedProduct> findByUserIdAndProductId(Long userId, Long productId);
 
     boolean existsByUserIdAndProductId(Long userId, Long productId);

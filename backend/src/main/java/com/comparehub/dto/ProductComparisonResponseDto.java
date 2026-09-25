@@ -26,4 +26,15 @@ public class ProductComparisonResponseDto {
 
     @Builder.Default
     private List<ProductAlternativeDto> alternatives = new ArrayList<>();
+
+    @Builder.Default
+    private String status = "SUCCESS"; // "SUCCESS", "PARTIAL_SUCCESS", "FAILED"
+
+    private String statusMessage;
+
+    @Builder.Default
+    private List<String> successfulProviders = new ArrayList<>();
+
+    @Builder.Default
+    private List<String> failedProviders = new ArrayList<>();
 }

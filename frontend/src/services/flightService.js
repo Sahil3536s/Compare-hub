@@ -10,6 +10,7 @@ export const searchFlights = async ({
   maxStops = null,
   airline = 'all',
   maxPrice = null,
+  maxDurationMinutes = null,
   timeOfDay = 'all',
   sortBy = 'best',
 } = {}) => {
@@ -23,6 +24,7 @@ export const searchFlights = async ({
     maxStops: maxStops !== null && maxStops !== '' ? Number(maxStops) : null,
     airline: airline && airline !== 'all' ? airline : null,
     maxPrice: maxPrice ? Number(maxPrice) : null,
+    maxDurationMinutes: maxDurationMinutes ? Number(maxDurationMinutes) : null,
     timeOfDay: timeOfDay && timeOfDay !== 'all' ? timeOfDay : null,
     sortBy: sortBy || 'best',
   };

@@ -7,15 +7,26 @@ spring:
 server:
   port: ${PORT:8080}
 
+# Comparison multi-factor ranking weights configuration
+comparison:
+  ranking:
+    price-weight: 0.45
+    rating-weight: 0.25
+    delivery-weight: 0.15
+    discount-weight: 0.10
+    availability-weight: 0.05
+    prior-rating: 3.5
+    confidence-threshold: 50.0
+
 # Common ranking weights configuration
 app:
   ranking:
     product:
-      price-weight: 0.40
-      rating-weight: 0.20
-      discount-weight: 0.15
+      price-weight: 0.45
+      rating-weight: 0.25
+      discount-weight: 0.10
       delivery-weight: 0.15
-      trust-weight: 0.10
+      trust-weight: 0.05
     flight:
       price-weight: 0.50
       duration-weight: 0.30
@@ -23,6 +34,9 @@ app:
     ride:
       fare-weight: 0.60
       eta-weight: 0.40
+  ml:
+    service-url: ${ML_SERVICE_URL:http://localhost:8000}
+    min-history-points: ${MIN_HISTORY_POINTS:20}
 
 # Resilience4j Defaults
 resilience4j:

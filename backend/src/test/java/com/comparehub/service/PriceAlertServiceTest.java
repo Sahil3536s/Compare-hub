@@ -104,4 +104,44 @@ class PriceAlertServiceTest {
         assertDoesNotThrow(() -> priceAlertService.deleteAlert(101L));
         verify(priceAlertRepository, times(1)).deleteById(101L);
     }
+
+    @Test
+    void shouldDeleteAlertWithUserOwnership() {
+        when(priceAlertRepository.findByIdAndUserId(101L, 1L))
+                .thenReturn(Optional.of(PriceAlert.builder().id(101L).build()));
+        doNothing().when(priceAlertRepository).deleteByIdAndUserId(101L, 1L);
+
+        assertDoesNotThrow(() -> priceAlertService.deleteAlert(1L, 101L));
+        verify(priceAlertRepository, times(1)).deleteByIdAndUserId(101L, 1L);
+    }
+
+    @Test
+    void shouldRejectDeleteWhenAlertDoesNotBelongToUser() {
+        when(priceAlertRepository.findByIdAndUserId(101L, 2L)).thenReturn(Optional.empty());
+
+        assertThrows(com.comparehub.exception.ResourceNotFoundException.class,
+                () -> priceAlertService.deleteAlert(2L, 101L));
+
+        verify(priceAlertRepository, never()).deleteByIdAndUserId(any(), any());
+    }
+
+    @Test
+    void shouldToggleAlertStatusWithUserOwnership() {
+        PriceAlert alert = PriceAlert.builder().id(101L).active(true).build();
+        when(priceAlertRepository.findByIdAndUserId(101L, 1L)).thenReturn(Optional.of(alert));
+
+        assertDoesNotThrow(() -> priceAlertService.toggleAlertStatus(1L, 101L, false));
+        assertFalse(alert.getActive());
+        verify(priceAlertRepository, times(1)).save(alert);
+    }
+
+    @Test
+    void shouldRejectToggleWhenAlertDoesNotBelongToUser() {
+        when(priceAlertRepository.findByIdAndUserId(101L, 2L)).thenReturn(Optional.empty());
+
+        assertThrows(com.comparehub.exception.ResourceNotFoundException.class,
+                () -> priceAlertService.toggleAlertStatus(2L, 101L, false));
+
+        verify(priceAlertRepository, never()).save(any());
+    }
 }

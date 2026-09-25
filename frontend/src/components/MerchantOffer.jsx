@@ -28,13 +28,13 @@ export const MerchantOffer = ({ offer }) => {
               />
             ) : null}
             <span className="text-xs font-bold text-slate-700 hidden">
-              {offer.merchantName.slice(0, 2).toUpperCase()}
+              {(offer.merchantName || offer.merchant || 'Store').slice(0, 2).toUpperCase()}
             </span>
           </div>
 
           <div>
             <div className="flex items-center gap-2 flex-wrap">
-              <h5 className="font-semibold text-sm text-slate-900">{offer.merchantName}</h5>
+              <h5 className="font-semibold text-sm text-slate-900">{offer.merchantName || offer.merchant}</h5>
               {offer.isCheapest && <PriceBadge type="cheapest" text="Lowest Price" />}
               {offer.rating && (
                 <span className="text-xs text-slate-500 flex items-center gap-1">

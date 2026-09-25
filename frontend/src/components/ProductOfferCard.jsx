@@ -3,7 +3,15 @@ import PriceBadge from './PriceBadge';
 import BestPaymentOptionCard from './BestPaymentOptionCard';
 import ProductAlternativesModal from './ProductAlternativesModal';
 
-export const ProductOfferCard = ({ offer, onSave, isSaved = false, onViewPriceHistory }) => {
+export const ProductOfferCard = ({
+  offer,
+  onSave,
+  isSaved = false,
+  onCompare,
+  isCompared = false,
+  onViewPriceHistory,
+  onSetPriceAlert,
+}) => {
   const [saved, setSaved] = useState(isSaved);
   const [showBreakdown, setShowBreakdown] = useState(false);
   const [showAlternatives, setShowAlternatives] = useState(false);
@@ -56,11 +64,23 @@ export const ProductOfferCard = ({ offer, onSave, isSaved = false, onViewPriceHi
               <span>Best Value</span>
             </span>
           )}
-          {offer.isCheapest && <PriceBadge type="cheapest" text="Cheapest Option" />}
+          {offer.isCheapest && (
+            <span className="px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider bg-emerald-600 text-white shadow-xs flex items-center gap-1">
+              <span>🏷️</span>
+              <span>Cheapest</span>
+              <span className="sr-only">Cheapest Option</span>
+            </span>
+          )}
           {offer.isHighestRated && !offer.isBestValue && (
-            <span className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-indigo-600 text-white shadow-xs flex items-center gap-1">
+            <span className="px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-indigo-600 text-white shadow-xs flex items-center gap-1">
               <span>⭐</span>
               <span>Top Rated</span>
+            </span>
+          )}
+          {offer.isFastestDelivery && (
+            <span className="px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider bg-cyan-600 text-white shadow-xs flex items-center gap-1">
+              <span>⚡</span>
+              <span>Fastest Delivery</span>
             </span>
           )}
           {offer.discountPercent > 10 && (
@@ -77,12 +97,13 @@ export const ProductOfferCard = ({ offer, onSave, isSaved = false, onViewPriceHi
           </span>
           <button
             onClick={handleSaveToggle}
-            className={`p-1.5 rounded-lg border transition shadow-xs ${
+            className={`p-1.5 rounded-lg border transition shadow-xs cursor-pointer ${
               saved
                 ? 'bg-rose-50 text-rose-600 border-rose-200'
                 : 'bg-white/90 text-slate-400 hover:text-rose-500 border-slate-200'
             }`}
-            title="Save deal"
+            title={saved ? 'Remove from wishlist' : 'Save to wishlist'}
+            aria-label={saved ? 'Remove deal from saved' : 'Save deal'}
           >
             <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 20 20">
               <path fillRule="evenodd" d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" clipRule="evenodd" />
@@ -107,6 +128,32 @@ export const ProductOfferCard = ({ offer, onSave, isSaved = false, onViewPriceHi
           <h3 className="font-bold text-sm text-slate-900 line-clamp-2 leading-snug title-font">
             {offer.productName}
           </h3>
+
+          {/* Variant, RAM, Storage tags where available */}
+          {(offer.attributes?.ram || offer.attributes?.storage || offer.attributes?.variant || offer.attributes?.color) && (
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              {offer.attributes.ram && (
+                <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                  RAM: {offer.attributes.ram}
+                </span>
+              )}
+              {offer.attributes.storage && (
+                <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                  Storage: {offer.attributes.storage}
+                </span>
+              )}
+              {offer.attributes.variant && (
+                <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                  {offer.attributes.variant}
+                </span>
+              )}
+              {offer.attributes.color && (
+                <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
+                  {offer.attributes.color}
+                </span>
+              )}
+            </div>
+          )}
 
           {/* Deal Quality & Historical Comparison Pill */}
           {dealQuality && (
@@ -158,9 +205,54 @@ export const ProductOfferCard = ({ offer, onSave, isSaved = false, onViewPriceHi
                   <span>History</span>
                 </button>
               )}
+              {onSetPriceAlert && (
+                <button
+                  type="button"
+                  onClick={() => onSetPriceAlert(offer)}
+                  className="text-[11px] font-bold text-amber-700 hover:text-amber-900 flex items-center gap-1 cursor-pointer bg-amber-50/80 px-2 py-0.5 rounded-md hover:bg-amber-100 transition border border-amber-200/50"
+                  data-testid="set-price-alert-btn"
+                  aria-label={`Set price alert for ${offer.productName}`}
+                >
+                  <span>🔔</span>
+                  <span>Set Price Alert</span>
+                </button>
+              )}
             </div>
           </div>
         </div>
+
+        {/* Part 8: Explainable Recommendation - Why this option? */}
+        {((offer.whyThisOption && offer.whyThisOption.length > 0) || offer.recommendationReason) && (
+          <div className="mt-2.5 p-3 rounded-xl bg-slate-50 border border-slate-200/80 text-xs space-y-1.5" data-testid="why-this-option-section">
+            <div className="flex items-center justify-between">
+              <span className="font-extrabold text-[11px] uppercase text-indigo-700 tracking-wider flex items-center gap-1.5">
+                <span>💡</span> Why this option?
+              </span>
+              {offer.finalScore != null && (
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800">
+                  Value Score: {offer.finalScore}/1.0
+                </span>
+              )}
+            </div>
+
+            {offer.recommendationReason && (
+              <p className="text-[11px] text-slate-700 font-medium italic">
+                &ldquo;{offer.recommendationReason}&rdquo;
+              </p>
+            )}
+
+            {offer.whyThisOption && offer.whyThisOption.length > 0 && (
+              <ul className="space-y-1 pt-1 border-t border-slate-200/60">
+                {offer.whyThisOption.map((reason, idx) => (
+                  <li key={idx} className="flex items-center gap-1.5 text-slate-700 text-xs">
+                    <span className="text-emerald-600 font-bold">✓</span>
+                    <span>{reason}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
 
         {/* Phase 30: Best Payment Option Card */}
         {paymentOffers && <BestPaymentOptionCard paymentOffers={paymentOffers} />}
@@ -170,6 +262,8 @@ export const ProductOfferCard = ({ offer, onSave, isSaved = false, onViewPriceHi
           <button
             type="button"
             onClick={() => setShowBreakdown(!showBreakdown)}
+            aria-expanded={showBreakdown}
+            aria-label="Toggle effective price breakdown details"
             className="w-full flex items-center justify-between text-xs font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50/60 hover:bg-indigo-50 px-3 py-1.5 rounded-xl transition cursor-pointer border border-indigo-100/80"
           >
             <span className="flex items-center gap-1.5">
@@ -237,58 +331,94 @@ export const ProductOfferCard = ({ offer, onSave, isSaved = false, onViewPriceHi
           )}
         </div>
 
-        {/* Price and View Deal Button */}
-        <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-3">
-          <div>
-            <div className="flex items-baseline gap-1.5">
-              <div className="text-2xl font-black text-slate-900 tracking-tight font-mono">
-                ₹{Number(effectivePrice).toLocaleString('en-IN')}
+        {/* Price and Action Buttons */}
+        <div className="pt-3 border-t border-slate-100 space-y-3">
+          <div className="flex items-baseline justify-between gap-3">
+            <div>
+              <div className="flex items-baseline gap-1.5">
+                <div className="text-2xl font-black text-slate-900 tracking-tight font-mono">
+                  ₹{Number(effectivePrice).toLocaleString('en-IN')}
+                </div>
+                {hasDiscounts && (
+                  <span className="text-[10px] font-bold text-emerald-600 uppercase bg-emerald-50 px-1.5 py-0.5 rounded-md border border-emerald-100">
+                    Effective
+                  </span>
+                )}
               </div>
-              {hasDiscounts && (
-                <span className="text-[10px] font-bold text-emerald-600 uppercase bg-emerald-50 px-1.5 py-0.5 rounded-md border border-emerald-100">
-                  Effective
-                </span>
-              )}
+              
+              {hasDiscounts ? (
+                <div className="text-xs text-slate-400">
+                  <span>Listed: </span>
+                  <span className="line-through font-mono">₹{Number(offer.price).toLocaleString('en-IN')}</span>
+                </div>
+              ) : offer.originalPrice && Number(offer.originalPrice) > Number(offer.price) ? (
+                <div className="text-xs text-slate-400">
+                  <span className="line-through">
+                    ₹{Number(offer.originalPrice).toLocaleString('en-IN')}
+                  </span>
+                  <span className="text-emerald-600 font-bold ml-1.5">
+                    Save {offer.discountPercent}%
+                  </span>
+                </div>
+              ) : null}
             </div>
-            
-            {hasDiscounts ? (
-              <div className="text-xs text-slate-400">
-                <span>Listed: </span>
-                <span className="line-through font-mono">₹{Number(offer.price).toLocaleString('en-IN')}</span>
-              </div>
-            ) : offer.originalPrice && Number(offer.originalPrice) > Number(offer.price) ? (
-              <div className="text-xs text-slate-400">
-                <span className="line-through">
-                  ₹{Number(offer.originalPrice).toLocaleString('en-IN')}
-                </span>
-                <span className="text-emerald-600 font-bold ml-1.5">
-                  Save {offer.discountPercent}%
-                </span>
-              </div>
-            ) : null}
+
+            <button
+              type="button"
+              onClick={handleSaveToggle}
+              className={`p-2 rounded-xl border transition shadow-xs cursor-pointer ${
+                saved
+                  ? 'bg-rose-50 text-rose-600 border-rose-200'
+                  : 'bg-slate-50 text-slate-400 hover:text-rose-500 hover:bg-white border-slate-200'
+              }`}
+              title={saved ? 'Saved to Wishlist' : 'Add to Wishlist'}
+              aria-label={saved ? 'Remove deal from saved' : 'Save deal'}
+            >
+              <svg className="w-4 h-4 fill-current" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" clipRule="evenodd" />
+              </svg>
+            </button>
           </div>
 
-          <a
-            href={offer.productUrl || '#'}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={(e) => {
-              if (offer.productUrl === '#') {
-                e.preventDefault();
-                alert(`Redirecting to ${offer.merchant} store for ${offer.productName}!`);
-              }
-            }}
-            className={`px-4 py-2.5 rounded-xl text-xs font-bold transition shadow-xs flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
-              offer.isCheapest
-                ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                : 'bg-slate-900 hover:bg-slate-800 text-white'
-            }`}
-          >
-            <span>View Deal</span>
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-            </svg>
-          </a>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => onCompare ? onCompare(offer) : setShowAlternatives(true)}
+              className={`py-2 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer border ${
+                isCompared
+                  ? 'bg-indigo-50 text-indigo-700 border-indigo-300'
+                  : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200'
+              }`}
+              aria-label={`Compare ${offer.productName}`}
+            >
+              <svg className="w-3.5 h-3.5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+              </svg>
+              <span>{isCompared ? 'Comparing' : 'Compare'}</span>
+            </button>
+
+            <a
+              href={offer.productUrl || '#'}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => {
+                if (offer.productUrl === '#') {
+                  e.preventDefault();
+                  alert(`Redirecting to ${offer.merchant} store for ${offer.productName}!`);
+                }
+              }}
+              className={`py-2 px-3 rounded-xl text-xs font-bold transition shadow-xs flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                offer.isCheapest
+                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                  : 'bg-slate-900 hover:bg-slate-800 text-white'
+              }`}
+            >
+              <span>View Deal</span>
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+              </svg>
+            </a>
+          </div>
         </div>
       </div>
 

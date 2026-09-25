@@ -15,5 +15,9 @@ public interface PriceAlertService {
 
     void toggleAlertStatus(Long alertId, boolean active);
 
+    void toggleAlertStatus(Long userId, Long alertId, boolean active);
+
     void deleteAlert(Long alertId);
+
+    void deleteAlert(Long userId, Long alertId);
 }

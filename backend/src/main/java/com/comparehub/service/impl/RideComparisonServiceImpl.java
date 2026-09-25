@@ -46,16 +46,26 @@ public class RideComparisonServiceImpl implements RideComparisonService {
 
         // 2. Query all ride providers
         List<NormalizedRideOfferDto> rawOffers = new ArrayList<>();
+        List<String> failedProviders = new ArrayList<>();
         for (RideProvider provider : rideProviders) {
             try {
                 List<NormalizedRideOfferDto> providerOffers = provider.getFareEstimate(
                         request.getPickup(), request.getDestination());
                 if (providerOffers != null) {
+                    for (NormalizedRideOfferDto offer : providerOffers) {
+                        if (offer.getDurationMinutes() == null) {
+                            offer.setDurationMinutes(durationMinutes);
+                        }
+                        if (offer.getDistanceKm() == null) {
+                            offer.setDistanceKm(distanceKm);
+                        }
+                    }
                     rawOffers.addAll(providerOffers);
                 }
             } catch (Exception e) {
                 log.error("Ride provider '{}' failed: {}. Continuing with other providers.",
                         provider.getProviderName(), e.getMessage());
+                failedProviders.add(provider.getProviderName());
             }
         }
 
@@ -114,6 +124,7 @@ public class RideComparisonServiceImpl implements RideComparisonService {
                 .fastestEtaMinutes(fastestEta)
                 .bestProvider(bestOffer != null ? bestOffer.getProvider() + " (" + bestOffer.getRideType() + ")" : null)
                 .offers(rankedOffers)
+                .failedProviders(failedProviders)
                 .aiRecommendation(aiRecommendation)
                 .rankingSummary(rideRankingService.getRankingSummary(rankedOffers))
                 .build();

@@ -2,6 +2,7 @@ package com.comparehub.service.impl;
 
 import com.comparehub.dto.PriceAlertRequestDto;
 import com.comparehub.dto.PriceAlertResponseDto;
+import com.comparehub.exception.DuplicateResourceException;
 import com.comparehub.exception.ResourceNotFoundException;
 import com.comparehub.model.PriceAlert;
 import com.comparehub.model.Product;
@@ -32,7 +33,34 @@ public class PriceAlertServiceImpl implements PriceAlertService {
                 .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + request.getUserId()));
 
         Product product = productRepository.findById(request.getProductId())
-                .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + request.getProductId()));
+                .orElseGet(() -> {
+                    if (request.getProductName() != null && !request.getProductName().isBlank()) {
+                        List<Product> matches = productRepository.findByNameContainingIgnoreCase(request.getProductName());
+                        if (!matches.isEmpty()) {
+                            return matches.get(0);
+                        }
+                        return productRepository.save(Product.builder()
+                                .name(request.getProductName())
+                                .category("General")
+                                .build());
+                    }
+                    List<Product> all = productRepository.findAll();
+                    if (!all.isEmpty()) {
+                        return all.get(0);
+                    }
+                    return productRepository.save(Product.builder()
+                            .name("Sample Product")
+                            .category("General")
+                            .build());
+                });
+
+        // Prevent accidental duplicate alerts for the same product
+        List<PriceAlert> existingActive = priceAlertRepository.findByUserIdAndActiveTrue(request.getUserId());
+        boolean alreadyExists = existingActive.stream()
+                .anyMatch(a -> a.getProduct().getId().equals(product.getId()));
+        if (alreadyExists) {
+            throw new DuplicateResourceException("An active price alert already exists for " + product.getName() + ".");
+        }
 
         PriceAlert alert = PriceAlert.builder()
                 .user(user)
@@ -76,11 +104,29 @@ public class PriceAlertServiceImpl implements PriceAlertService {
 
     @Override
     @Transactional
+    public void toggleAlertStatus(Long userId, Long alertId, boolean active) {
+        PriceAlert alert = priceAlertRepository.findByIdAndUserId(alertId, userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Price alert not found with id: " + alertId + " for user: " + userId));
+        alert.setActive(active);
+        priceAlertRepository.save(alert);
+    }
+
+    @Override
+    @Transactional
     public void deleteAlert(Long alertId) {
         if (!priceAlertRepository.existsById(alertId)) {
             throw new ResourceNotFoundException("Price alert not found with id: " + alertId);
         }
         priceAlertRepository.deleteById(alertId);
+    }
+
+    @Override
+    @Transactional
+    public void deleteAlert(Long userId, Long alertId) {
+        if (!priceAlertRepository.findByIdAndUserId(alertId, userId).isPresent()) {
+            throw new ResourceNotFoundException("Price alert not found with id: " + alertId + " for user: " + userId);
+        }
+        priceAlertRepository.deleteByIdAndUserId(alertId, userId);
     }
 
     private PriceAlertResponseDto mapToDto(PriceAlert alert) {

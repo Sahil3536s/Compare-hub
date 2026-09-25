@@ -21,23 +21,31 @@ vi.mock('../services/searchService', () => ({
   universalSearch: vi.fn(),
 }));
 
-describe('Universal Search Frontend Integration', () => {
+describe('Universal Search & Homepage Integration', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('renders universal search bar with sample query suggestions', () => {
+  it('renders redesigned homepage with verbatim headings and upgraded placeholder', () => {
     render(
       <BrowserRouter>
         <HomePage />
       </BrowserRouter>
     );
 
-    expect(screen.getByPlaceholderText(/Search products, flights/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Universal Search/i })).toBeInTheDocument();
-    expect(screen.getByText(/iPhone 17 256GB/i)).toBeInTheDocument();
-    expect(screen.getByText(/Delhi to Mumbai flight tomorrow/i)).toBeInTheDocument();
-    expect(screen.getByText(/Ride from VIT Bhopal to Bhopal Airport/i)).toBeInTheDocument();
+    // Headings
+    expect(screen.getByText(/Compare prices\./i)).toBeInTheDocument();
+    expect(screen.getByText(/Decide smarter\./i)).toBeInTheDocument();
+    expect(screen.getByText(/Compare products, flights and rides in one place\./i)).toBeInTheDocument();
+
+    // Universal Search Bar
+    expect(screen.getByPlaceholderText('Search a product or paste a product link')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Search' })).toBeInTheDocument();
+
+    // 3 Category Cards
+    expect(screen.getByRole('heading', { name: 'Shopping', level: 3 })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Flights', level: 3 })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Rides', level: 3 })).toBeInTheDocument();
   });
 
   it('submits search query and displays detected intent and product results', async () => {
@@ -82,10 +90,10 @@ describe('Universal Search Frontend Integration', () => {
       </BrowserRouter>
     );
 
-    const input = screen.getByPlaceholderText(/Search products, flights/i);
+    const input = screen.getByPlaceholderText('Search a product or paste a product link');
     await userEvent.type(input, 'Samsung phone under 30000');
 
-    const searchBtn = screen.getByRole('button', { name: /Universal Search/i });
+    const searchBtn = screen.getByRole('button', { name: 'Search' });
     fireEvent.click(searchBtn);
 
     await waitFor(() => {
@@ -93,6 +101,122 @@ describe('Universal Search Frontend Integration', () => {
       expect(screen.getByTestId('universal-results-container')).toBeInTheDocument();
       expect(screen.getByText(/Product Search/i)).toBeInTheDocument();
       expect(screen.getByText(/Samsung Galaxy A35 5G/i)).toBeInTheDocument();
+    });
+  });
+
+  it('handles product link pasting and triggers URL search', async () => {
+    const amazonUrl = 'https://www.amazon.in/Apple-iPhone-15-128-GB/dp/B0CHX1W1XY/';
+    const mockUrlResponse = {
+      intent: 'PRODUCT_SEARCH',
+      query: amazonUrl,
+      redirectRoute: '/shopping',
+      executionTimeMs: 45,
+      productResults: {
+        totalOffers: 1,
+        cheapestPrice: 69999,
+        cheapestMerchant: 'Amazon',
+        offers: [
+          {
+            merchant: 'Amazon',
+            productName: 'Apple iPhone 15 128GB',
+            price: 69999,
+            brand: 'Apple',
+            rating: 4.8,
+            inStock: true,
+            isCheapest: true,
+          },
+        ],
+      },
+    };
+
+    searchService.universalSearch.mockResolvedValueOnce(mockUrlResponse);
+
+    render(
+      <BrowserRouter>
+        <HomePage />
+      </BrowserRouter>
+    );
+
+    const input = screen.getByPlaceholderText('Search a product or paste a product link');
+    await userEvent.type(input, amazonUrl);
+
+    const searchBtn = screen.getByRole('button', { name: 'Search' });
+    fireEvent.click(searchBtn);
+
+    await waitFor(() => {
+      expect(searchService.universalSearch).toHaveBeenCalledWith(amazonUrl);
+      expect(screen.getByText(/Apple iPhone 15 128GB/i)).toBeInTheDocument();
+    });
+  });
+
+  it('shows clear button when text is entered and clears input on click', async () => {
+    render(
+      <BrowserRouter>
+        <HomePage />
+      </BrowserRouter>
+    );
+
+    const input = screen.getByPlaceholderText('Search a product or paste a product link');
+    expect(screen.queryByLabelText('Clear search input')).not.toBeInTheDocument();
+
+    await userEvent.type(input, 'MacBook');
+    const clearBtn = screen.getByLabelText('Clear search input');
+    expect(clearBtn).toBeInTheDocument();
+
+    fireEvent.click(clearBtn);
+    expect(input.value).toBe('');
+    expect(screen.queryByLabelText('Clear search input')).not.toBeInTheDocument();
+  });
+
+  it('displays empty state card when 0 comparison offers are found', async () => {
+    const emptyResponse = {
+      intent: 'PRODUCT_SEARCH',
+      query: 'NonExistentGadgetXYZ999',
+      productResults: {
+        totalOffers: 0,
+        offers: [],
+      },
+    };
+
+    searchService.universalSearch.mockResolvedValueOnce(emptyResponse);
+
+    render(
+      <BrowserRouter>
+        <HomePage />
+      </BrowserRouter>
+    );
+
+    const input = screen.getByPlaceholderText('Search a product or paste a product link');
+    await userEvent.type(input, 'NonExistentGadgetXYZ999');
+
+    const searchBtn = screen.getByRole('button', { name: 'Search' });
+    fireEvent.click(searchBtn);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('empty-search-state')).toBeInTheDocument();
+      expect(screen.getByText(/No comparisons found/i)).toBeInTheDocument();
+    });
+  });
+
+  it('displays error banner with retry button on search failure', async () => {
+    searchService.universalSearch.mockRejectedValueOnce(new Error('Network connection timeout'));
+
+    render(
+      <BrowserRouter>
+        <HomePage />
+      </BrowserRouter>
+    );
+
+    const input = screen.getByPlaceholderText('Search a product or paste a product link');
+    await userEvent.type(input, 'Gaming Laptop');
+
+    const searchBtn = screen.getByRole('button', { name: 'Search' });
+    fireEvent.click(searchBtn);
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toBeInTheDocument();
+      expect(screen.getByText(/Network connection timeout/i)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Try Again/i })).toBeInTheDocument();
     });
   });
 
@@ -138,7 +262,7 @@ describe('Universal Search Frontend Integration', () => {
       </BrowserRouter>
     );
 
-    const sampleChip = screen.getByText(/Delhi to Mumbai flight tomorrow/i);
+    const sampleChip = screen.getByText(/Delhi to Mumbai flight/i);
     fireEvent.click(sampleChip);
 
     await waitFor(() => {

@@ -38,7 +38,8 @@ public class FlightSearchRequestDto {
     private Integer maxStops; // 0 for non-stop, 1, 2
     private String airline; // "IndiGo", "Air India", "Vistara", "SpiceJet", "all"
     private BigDecimal maxPrice;
-    private String timeOfDay; // "all", "morning", "afternoon", "evening", "night"
+    private Integer maxDurationMinutes;
+    private String timeOfDay; // "all", "morning", "afternoon", "evening", "night", "before_6am", "6am_12pm", "12pm_6pm", "after_6pm"
     @Builder.Default
     private String sortBy = "best"; // "cheapest", "fastest", "best", "price_asc", "price_desc"
 

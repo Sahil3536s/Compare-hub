@@ -36,6 +36,12 @@ public class SavedProduct {
     @JoinColumn(name = "product_id", nullable = false)
     private Product product;
 
+    @Column(name = "saved_price", precision = 12, scale = 2)
+    private java.math.BigDecimal savedPrice;
+
+    @Column(name = "saved_merchant", length = 100)
+    private String savedMerchant;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     @Builder.Default
     private Instant createdAt = Instant.now();

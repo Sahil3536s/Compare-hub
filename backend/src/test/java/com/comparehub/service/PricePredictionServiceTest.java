@@ -139,8 +139,73 @@ class PricePredictionServiceTest {
 
         PricePredictionResponseDto result = service.getPricePrediction(1L);
 
-        assertEquals("ML_UNAVAILABLE", result.getStatus());
+        assertEquals("TEMPORARILY_UNAVAILABLE", result.getStatus());
         assertNotNull(result.getMessage());
+        assertNull(result.getPredictedPrice7d());
+    }
+
+    @Test
+    void shouldRejectNegativePriceInMLResponse() {
+        when(productRepository.findById(1L)).thenReturn(Optional.of(testProduct));
+        when(priceHistoryRepository.findByProductIdOrderByRecordedAtAsc(1L))
+                .thenReturn(buildHistory(25));
+
+        MLServiceResponseDto malformed = MLServiceResponseDto.builder()
+                .status("SUCCESS")
+                .productId(1L)
+                .currentPrice(-500.0) // Impossible negative price!
+                .predictedPrice7d(56000.0)
+                .build();
+
+        when(mlServiceClient.predict(eq(1L), anyList())).thenReturn(Optional.of(malformed));
+
+        PricePredictionResponseDto result = service.getPricePrediction(1L);
+
+        assertEquals("INVALID_RESPONSE", result.getStatus());
+        assertNull(result.getPredictedPrice7d());
+    }
+
+    @Test
+    void shouldRejectNaNPriceInMLResponse() {
+        when(productRepository.findById(1L)).thenReturn(Optional.of(testProduct));
+        when(priceHistoryRepository.findByProductIdOrderByRecordedAtAsc(1L))
+                .thenReturn(buildHistory(25));
+
+        MLServiceResponseDto malformed = MLServiceResponseDto.builder()
+                .status("SUCCESS")
+                .productId(1L)
+                .currentPrice(Double.NaN) // Impossible NaN!
+                .predictedPrice7d(56000.0)
+                .build();
+
+        when(mlServiceClient.predict(eq(1L), anyList())).thenReturn(Optional.of(malformed));
+
+        PricePredictionResponseDto result = service.getPricePrediction(1L);
+
+        assertEquals("INVALID_RESPONSE", result.getStatus());
+        assertNull(result.getPredictedPrice7d());
+    }
+
+    @Test
+    void shouldRejectInvertedRangeInMLResponse() {
+        when(productRepository.findById(1L)).thenReturn(Optional.of(testProduct));
+        when(priceHistoryRepository.findByProductIdOrderByRecordedAtAsc(1L))
+                .thenReturn(buildHistory(25));
+
+        MLServiceResponseDto malformed = MLServiceResponseDto.builder()
+                .status("SUCCESS")
+                .productId(1L)
+                .currentPrice(55000.0)
+                .predictedPrice7d(56000.0)
+                .predictedPriceLow(60000.0) // Low > High!
+                .predictedPriceHigh(50000.0)
+                .build();
+
+        when(mlServiceClient.predict(eq(1L), anyList())).thenReturn(Optional.of(malformed));
+
+        PricePredictionResponseDto result = service.getPricePrediction(1L);
+
+        assertEquals("INVALID_RESPONSE", result.getStatus());
         assertNull(result.getPredictedPrice7d());
     }
 

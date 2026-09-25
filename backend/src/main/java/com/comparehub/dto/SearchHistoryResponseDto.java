@@ -17,5 +17,7 @@ public class SearchHistoryResponseDto {
     private Long userId;
     private String query;
     private SearchType searchType;
+    private String details;
+    private String targetUrl;
     private Instant createdAt;
 }

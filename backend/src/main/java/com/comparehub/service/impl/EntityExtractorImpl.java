@@ -93,7 +93,8 @@ public class EntityExtractorImpl implements EntityExtractor {
             return ProductQueryEntitiesDto.builder().build();
         }
 
-        String lower = query.toLowerCase(Locale.ROOT);
+        String unUrled = extractTitleFromUrl(query);
+        String lower = unUrled.toLowerCase(Locale.ROOT);
 
         // 1. Category extraction
         String category = "general";
@@ -127,13 +128,13 @@ public class EntityExtractorImpl implements EntityExtractor {
 
         // 4. Storage & RAM
         String storage = null;
-        Matcher storageMatcher = STORAGE_PATTERN.matcher(query);
+        Matcher storageMatcher = STORAGE_PATTERN.matcher(unUrled);
         if (storageMatcher.find()) {
             storage = storageMatcher.group(1).toUpperCase().replace(" ", "");
         }
 
         String ram = null;
-        Matcher ramMatcher = RAM_PATTERN.matcher(query);
+        Matcher ramMatcher = RAM_PATTERN.matcher(unUrled);
         if (ramMatcher.find()) {
             ram = ramMatcher.group(1).toUpperCase().replace(" ", "");
         }
@@ -297,9 +298,59 @@ public class EntityExtractorImpl implements EntityExtractor {
     @Override
     public String cleanQuery(String query) {
         if (query == null) return "";
-        return query.replaceAll("(?i)\\b(find|me|a|the|best|cheapest|cheap|under|below|with|for|in)\\b", "")
+        String unUrled = extractTitleFromUrl(query);
+        return unUrled.replaceAll("(?i)\\b(find|me|a|the|best|cheapest|cheap|under|below|with|for|in)\\b", "")
                 .replaceAll("\\s{2,}", " ")
                 .trim();
+    }
+
+    public String extractTitleFromUrl(String query) {
+        if (query == null) return "";
+        String s = query.trim();
+        if (s.startsWith("http://") || s.startsWith("https://") || s.startsWith("www.") ||
+            s.contains("amazon.") || s.contains("flipkart.") || s.contains("croma.")) {
+            try {
+                String clean = s.replaceFirst("^https?://", "").replaceFirst("^www\\.", "");
+                int slashIdx = clean.indexOf('/');
+                if (slashIdx != -1) {
+                    String path = clean.substring(slashIdx + 1);
+                    if (path.contains("/dp/")) {
+                        String slug = path.substring(0, path.indexOf("/dp/"));
+                        String title = cleanSlug(slug);
+                        if (!title.isBlank()) return title;
+                    }
+                    if (path.contains("/p/")) {
+                        String slug = path.substring(0, path.indexOf("/p/"));
+                        String title = cleanSlug(slug);
+                        if (!title.isBlank()) return title;
+                    }
+                    String[] segments = path.split("/");
+                    for (String seg : segments) {
+                        String trimmed = seg.replaceAll("\\?.*$", "").trim();
+                        if (trimmed.length() > 4 && !trimmed.equalsIgnoreCase("product") &&
+                            !trimmed.equalsIgnoreCase("item") && !trimmed.equalsIgnoreCase("dp") &&
+                            !trimmed.equalsIgnoreCase("category") && !trimmed.matches("^[a-zA-Z0-9]{10,}$")) {
+                            String title = cleanSlug(trimmed);
+                            if (!title.isBlank()) return title;
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("Could not extract title from URL '{}': {}", query, e.getMessage());
+            }
+        }
+        return query;
+    }
+
+    private String cleanSlug(String slug) {
+        if (slug == null) return "";
+        return slug.replace("-", " ")
+                   .replace("_", " ")
+                   .replace("+", " ")
+                   .replaceAll("%20", " ")
+                   .replaceAll("(?i)\\b(dp|ref|itm|p|product|buy)\\b", "")
+                   .replaceAll("\\s{2,}", " ")
+                   .trim();
     }
 
     private String resolveAirportCode(String text) {

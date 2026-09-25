@@ -37,6 +37,14 @@ public class SearchHistory {
     @Column(name = "search_type", nullable = false, length = 50)
     private SearchType searchType;
 
+    @Size(max = 500, message = "Details must not exceed 500 characters")
+    @Column(length = 500)
+    private String details;
+
+    @Size(max = 500, message = "Target URL must not exceed 500 characters")
+    @Column(name = "target_url", length = 500)
+    private String targetUrl;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     @Builder.Default
     private Instant createdAt = Instant.now();

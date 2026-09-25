@@ -10,6 +10,7 @@ import FlightsPage from './pages/FlightsPage';
 import RidesPage from './pages/RidesPage';
 import AlertsPage from './pages/AlertsPage';
 import SavedPage from './pages/SavedPage';
+import DashboardPage from './pages/DashboardPage';
 import HistoryPage from './pages/HistoryPage';
 import NotificationsPage from './pages/NotificationsPage';
 import SavingsDashboardPage from './pages/SavingsDashboardPage';
@@ -36,6 +37,7 @@ function App() {
               <Route path="rides" element={<RidesPage />} />
               <Route path="alerts" element={<AlertsPage />} />
               <Route path="saved" element={<SavedPage />} />
+              <Route path="dashboard" element={<DashboardPage />} />
               <Route path="savings" element={<SavingsDashboardPage />} />
               <Route path="history" element={<HistoryPage />} />
               <Route path="notifications" element={<NotificationsPage />} />

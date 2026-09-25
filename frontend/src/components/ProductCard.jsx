@@ -37,6 +37,7 @@ export const ProductCard = ({ product, onSave, isSaved = false }) => {
         <button
           onClick={handleSaveToggle}
           title={saved ? 'Remove from Saved' : 'Save Product'}
+          aria-label={saved ? 'Remove from Saved' : 'Save Product'}
           className={`absolute top-3 right-3 p-2 rounded-full backdrop-blur-md transition shadow-xs z-10 ${
             saved
               ? 'bg-rose-50 text-rose-600 border border-rose-200'
@@ -147,6 +148,8 @@ export const ProductCard = ({ product, onSave, isSaved = false }) => {
         <div className="pt-2">
           <button
             onClick={() => setShowOffers(!showOffers)}
+            aria-expanded={showOffers}
+            aria-label={`Compare ${product.merchantOffers?.length || 0} stores for ${product.title}`}
             className="w-full py-2.5 px-4 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs sm:text-sm font-semibold rounded-xl transition flex items-center justify-center gap-2 cursor-pointer"
           >
             <span>Compare {product.merchantOffers?.length || 0} Stores</span>

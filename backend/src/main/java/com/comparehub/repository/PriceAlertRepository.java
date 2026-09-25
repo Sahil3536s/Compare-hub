@@ -14,10 +14,18 @@ public interface PriceAlertRepository extends JpaRepository<PriceAlert, Long> {
 
     List<PriceAlert> findByUserId(Long userId);
 
+    List<PriceAlert> findByUserIdOrderByCreatedAtDesc(Long userId);
+
     List<PriceAlert> findByUserIdAndActiveTrue(Long userId);
+
+    java.util.Optional<PriceAlert> findByIdAndUserId(Long id, Long userId);
+
+    void deleteByIdAndUserId(Long id, Long userId);
 
     @Query("SELECT pa FROM PriceAlert pa WHERE pa.product.id = :productId AND pa.active = true AND pa.targetPrice >= :currentPrice")
     List<PriceAlert> findTriggerableAlerts(@Param("productId") Long productId, @Param("currentPrice") BigDecimal currentPrice);
 
     long countByUserId(Long userId);
+
+    long countByUserIdAndActiveTrue(Long userId);
 }

@@ -1,23 +1,33 @@
 import apiClient from './api';
 
 export const compareRides = async ({
-  pickup,
-  destination,
+  pickup = {},
+  destination = {},
   rideType = 'all',
   sortBy = 'best',
 }) => {
   const body = {
     pickup: {
-      latitude: pickup.latitude || 28.6315,
-      longitude: pickup.longitude || 77.2167,
-      address: pickup.address || 'Connaught Place, New Delhi',
-      city: pickup.city || 'New Delhi',
+      name: pickup.name || pickup.mainText,
+      formattedAddress: pickup.formattedAddress || pickup.fullAddress || pickup.address,
+      address: pickup.address || pickup.formattedAddress || pickup.fullAddress,
+      latitude: pickup.latitude,
+      longitude: pickup.longitude,
+      city: pickup.city,
+      state: pickup.state,
+      country: pickup.country,
+      providerPlaceId: pickup.providerPlaceId || pickup.placeId,
     },
     destination: {
-      latitude: destination.latitude || 28.5562,
-      longitude: destination.longitude || 77.1000,
-      address: destination.address || 'IGI Airport, New Delhi',
-      city: destination.city || 'New Delhi',
+      name: destination.name || destination.mainText,
+      formattedAddress: destination.formattedAddress || destination.fullAddress || destination.address,
+      address: destination.address || destination.formattedAddress || destination.fullAddress,
+      latitude: destination.latitude,
+      longitude: destination.longitude,
+      city: destination.city,
+      state: destination.state,
+      country: destination.country,
+      providerPlaceId: destination.providerPlaceId || destination.placeId,
     },
     rideType: rideType || 'all',
     sortBy: sortBy || 'best',
@@ -30,3 +40,4 @@ export const compareRides = async ({
 export default {
   compareRides,
 };
+

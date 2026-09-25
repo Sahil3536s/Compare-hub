@@ -15,4 +15,18 @@ public interface ProductComparisonService {
             BigDecimal maxPrice,
             Boolean inStockOnly,
             String sortBy);
+
+    ProductComparisonResponseDto compareProducts(
+            String query,
+            String merchant,
+            String brand,
+            String category,
+            BigDecimal minPrice,
+            BigDecimal maxPrice,
+            Boolean inStockOnly,
+            String sortBy,
+            Double minRating,
+            String ram,
+            String storage,
+            String delivery);
 }

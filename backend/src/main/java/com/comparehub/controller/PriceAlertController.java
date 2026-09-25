@@ -42,7 +42,7 @@ public class PriceAlertController {
             @AuthenticationPrincipal UserPrincipal userPrincipal,
             @PathVariable("id") Long id,
             @RequestParam("active") boolean active) {
-        priceAlertService.toggleAlertStatus(id, active);
+        priceAlertService.toggleAlertStatus(userPrincipal.getId(), id, active);
         return ResponseEntity.ok(Map.of("id", id, "active", active, "message", "Alert status updated"));
     }
 
@@ -50,7 +50,7 @@ public class PriceAlertController {
     public ResponseEntity<Map<String, String>> deleteAlert(
             @AuthenticationPrincipal UserPrincipal userPrincipal,
             @PathVariable("id") Long id) {
-        priceAlertService.deleteAlert(id);
+        priceAlertService.deleteAlert(userPrincipal.getId(), id);
         return ResponseEntity.ok(Map.of("message", "Alert deleted successfully"));
     }
 }

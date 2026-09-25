@@ -100,6 +100,36 @@ class PricePredictionControllerTest {
     }
 
     @Test
+    void shouldReturn200WithTemporarilyUnavailableStatus() throws Exception {
+        PricePredictionResponseDto dto = PricePredictionResponseDto.builder()
+                .status("TEMPORARILY_UNAVAILABLE")
+                .productId(3L)
+                .message("Price prediction is temporarily unavailable.")
+                .build();
+
+        when(pricePredictionService.getPricePrediction(3L)).thenReturn(dto);
+
+        mockMvc.perform(get("/api/products/3/prediction").accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("TEMPORARILY_UNAVAILABLE"));
+    }
+
+    @Test
+    void shouldReturn200WithInvalidResponseStatus() throws Exception {
+        PricePredictionResponseDto dto = PricePredictionResponseDto.builder()
+                .status("INVALID_RESPONSE")
+                .productId(4L)
+                .message("Prediction returned invalid or malformed data.")
+                .build();
+
+        when(pricePredictionService.getPricePrediction(4L)).thenReturn(dto);
+
+        mockMvc.perform(get("/api/products/4/prediction").accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("INVALID_RESPONSE"));
+    }
+
+    @Test
     void shouldReturn404WhenProductNotFound() throws Exception {
         when(pricePredictionService.getPricePrediction(999L))
                 .thenThrow(new ResourceNotFoundException("Product not found with id: 999"));

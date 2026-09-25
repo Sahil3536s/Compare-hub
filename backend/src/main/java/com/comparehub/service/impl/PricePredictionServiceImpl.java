@@ -80,18 +80,79 @@ public class PricePredictionServiceImpl implements com.comparehub.service.PriceP
         if (mlResponseOpt.isEmpty()) {
             log.warn("ML service unavailable or circuit open for product {}", productId);
             return PricePredictionResponseDto.builder()
-                    .status("ML_UNAVAILABLE")
+                    .status("TEMPORARILY_UNAVAILABLE")
                     .productId(productId)
                     .productName(product.getName())
-                    .message("Price prediction service is temporarily unavailable. " +
+                    .message("Price prediction is temporarily unavailable. " +
                              "All other comparison features continue to work normally.")
                     .build();
         }
 
         MLServiceResponseDto mlResponse = mlResponseOpt.get();
 
-        // 7. Map ML response to frontend DTO
+        // 7. Validate ML response
+        if ("INSUFFICIENT_DATA".equalsIgnoreCase(mlResponse.getStatus())) {
+            return PricePredictionResponseDto.builder()
+                    .status("INSUFFICIENT_DATA")
+                    .productId(productId)
+                    .productName(product.getName())
+                    .dataPointsUsed(mlResponse.getDataPointsUsed())
+                    .message("More price history is required before a reliable prediction can be generated.")
+                    .build();
+        }
+
+        if (!"SUCCESS".equalsIgnoreCase(mlResponse.getStatus())) {
+            log.warn("ML service returned non-successful status '{}' for product {}", mlResponse.getStatus(), productId);
+            return PricePredictionResponseDto.builder()
+                    .status("INVALID_RESPONSE")
+                    .productId(productId)
+                    .productName(product.getName())
+                    .message("Invalid response received from prediction service.")
+                    .build();
+        }
+
+        // Validate numerical integrity for SUCCESS status
+        if (!isValidMLResponse(mlResponse)) {
+            log.warn("ML service response failed numerical integrity checks for product {}: {}", productId, mlResponse);
+            return PricePredictionResponseDto.builder()
+                    .status("INVALID_RESPONSE")
+                    .productId(productId)
+                    .productName(product.getName())
+                    .message("Prediction returned invalid or malformed data.")
+                    .build();
+        }
+
+        // 8. Map ML response to frontend DTO
         return mapToResponseDto(mlResponse, productId, product.getName());
+    }
+
+    private boolean isValidMLResponse(MLServiceResponseDto ml) {
+        if (ml.getCurrentPrice() == null || ml.getPredictedPrice7d() == null) {
+            return false;
+        }
+        if (ml.getCurrentPrice() <= 0 || ml.getPredictedPrice7d() <= 0) {
+            return false;
+        }
+        if (Double.isNaN(ml.getCurrentPrice()) || Double.isInfinite(ml.getCurrentPrice()) ||
+            Double.isNaN(ml.getPredictedPrice7d()) || Double.isInfinite(ml.getPredictedPrice7d())) {
+            return false;
+        }
+        if (ml.getPredictedChange() != null &&
+            (Double.isNaN(ml.getPredictedChange()) || Double.isInfinite(ml.getPredictedChange()))) {
+            return false;
+        }
+        if (ml.getPredictedChangePercent() != null &&
+            (Double.isNaN(ml.getPredictedChangePercent()) || Double.isInfinite(ml.getPredictedChangePercent()))) {
+            return false;
+        }
+        if (ml.getPredictedPriceLow() != null && ml.getPredictedPriceHigh() != null) {
+            if (ml.getPredictedPriceLow() <= 0 || ml.getPredictedPriceHigh() < ml.getPredictedPriceLow() ||
+                Double.isNaN(ml.getPredictedPriceLow()) || Double.isNaN(ml.getPredictedPriceHigh()) ||
+                Double.isInfinite(ml.getPredictedPriceLow()) || Double.isInfinite(ml.getPredictedPriceHigh())) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private PricePredictionResponseDto mapToResponseDto(
@@ -104,6 +165,7 @@ public class PricePredictionServiceImpl implements com.comparehub.service.PriceP
                 .dataPointsUsed(ml.getDataPointsUsed())
                 .message(ml.getMessage())
                 .modelName(ml.getModelName())
+                .model(ml.getModelName())
                 .modelVersion(ml.getModelVersion())
                 .recommendation(ml.getRecommendation())
                 .recommendationReason(ml.getRecommendationReason())
@@ -114,7 +176,9 @@ public class PricePredictionServiceImpl implements com.comparehub.service.PriceP
             builder.currentPrice(BigDecimal.valueOf(ml.getCurrentPrice()));
         }
         if (ml.getPredictedPrice7d() != null) {
-            builder.predictedPrice7d(BigDecimal.valueOf(ml.getPredictedPrice7d()));
+            BigDecimal p7d = BigDecimal.valueOf(ml.getPredictedPrice7d());
+            builder.predictedPrice7d(p7d);
+            builder.predictedPrice7Days(p7d);
         }
         if (ml.getPredictedChange() != null) {
             builder.predictedChange(BigDecimal.valueOf(ml.getPredictedChange()));
@@ -123,10 +187,14 @@ public class PricePredictionServiceImpl implements com.comparehub.service.PriceP
             builder.predictedChangePercent(ml.getPredictedChangePercent());
         }
         if (ml.getPredictedPriceLow() != null) {
-            builder.predictedPriceLow(BigDecimal.valueOf(ml.getPredictedPriceLow()));
+            BigDecimal low = BigDecimal.valueOf(ml.getPredictedPriceLow());
+            builder.predictedPriceLow(low);
+            builder.predictionRangeLow(low);
         }
         if (ml.getPredictedPriceHigh() != null) {
-            builder.predictedPriceHigh(BigDecimal.valueOf(ml.getPredictedPriceHigh()));
+            BigDecimal high = BigDecimal.valueOf(ml.getPredictedPriceHigh());
+            builder.predictedPriceHigh(high);
+            builder.predictionRangeHigh(high);
         }
 
         return builder.build();

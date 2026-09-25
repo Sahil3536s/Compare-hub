@@ -99,4 +99,19 @@ class QueryUnderstandingServiceTest {
         assertThat(result.getMissingFields()).contains("origin");
         assertThat(result.getClarificationPrompt()).isNotEmpty();
     }
+
+    @Test
+    @DisplayName("Should extract product intent and clean title from pasted Amazon/Flipkart product URL")
+    void testParseProductUrlQuery() {
+        String urlQuery = "https://www.amazon.in/Apple-iPhone-15-128-GB/dp/B0CHX1W1XY/";
+        StructuredQueryUnderstandingDto result = queryUnderstandingService.understandQuery(urlQuery);
+
+        assertThat(result).isNotNull();
+        assertThat(result.getIntent()).isEqualTo(SearchIntent.PRODUCT_SEARCH);
+        assertThat(result.getCleanedQuery()).containsIgnoringCase("iPhone 15");
+        assertThat(result.getProductEntities()).isNotNull();
+        assertThat(result.getProductEntities().getBrand()).isEqualTo("Apple");
+        assertThat(result.getProductEntities().getStorage()).isEqualTo("128GB");
+        assertThat(result.getIsValid()).isTrue();
+    }
 }

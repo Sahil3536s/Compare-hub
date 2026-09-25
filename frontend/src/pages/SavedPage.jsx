@@ -5,6 +5,8 @@ import { getFlightHistory } from '../services/historyService';
 import LoadingSkeleton from '../components/LoadingSkeleton';
 import EmptyState from '../components/EmptyState';
 import ErrorState from '../components/ErrorState';
+import SavedProductCard from '../components/saved/SavedProductCard';
+import PriceAlertModal from '../components/PriceAlertModal';
 
 export const SavedPage = () => {
   const [activeTab, setActiveTab] = useState('products'); // 'products', 'flights', 'routes'
@@ -13,6 +15,10 @@ export const SavedPage = () => {
   const [products, setProducts] = useState([]);
   const [flights, setFlights] = useState([]);
   const [routes, setRoutes] = useState([]);
+
+  // Alert modal state
+  const [alertModalOpen, setAlertModalOpen] = useState(false);
+  const [selectedAlertProduct, setSelectedAlertProduct] = useState(null);
 
   // Route form state
   const [newPickup, setNewPickup] = useState('');
@@ -141,55 +147,22 @@ export const SavedPage = () => {
               {products.length > 0 ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {products.map((item) => (
-                    <div
+                    <SavedProductCard
                       key={item.id}
-                      className="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs hover:shadow-md transition flex flex-col justify-between"
-                    >
-                      <div className="flex items-start gap-4">
-                        <div className="w-16 h-16 rounded-2xl bg-slate-50 border border-slate-100 p-2 flex items-center justify-center shrink-0">
-                          {item.productImageUrl ? (
-                            <img src={item.productImageUrl} alt={item.productName} className="w-full h-full object-contain" />
-                          ) : (
-                            <span className="text-2xl">📦</span>
-                          )}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md">
-                            {item.productCategory || 'General'}
-                          </span>
-                          <h3 className="font-extrabold text-slate-900 text-base mt-1 truncate">
-                            {item.productName}
-                          </h3>
-                          <p className="text-[11px] text-slate-400 mt-0.5">
-                            Saved on {item.createdAt ? new Date(item.createdAt).toLocaleDateString() : 'Recently'}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="pt-4 mt-4 border-t border-slate-100 flex items-center justify-between gap-3">
-                        <Link
-                          to={`/shopping?q=${encodeURIComponent(item.productName)}`}
-                          className="px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs rounded-xl transition flex items-center gap-1.5"
-                        >
-                          <span>Compare Prices</span>
-                          <span>→</span>
-                        </Link>
-                        <button
-                          onClick={() => handleRemoveProduct(item.id)}
-                          className="text-xs font-semibold text-rose-600 hover:text-rose-800 p-2 cursor-pointer"
-                          title="Remove from saved"
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    </div>
+                      product={item}
+                      onRemove={handleRemoveProduct}
+                      onSetAlert={(p) => {
+                        setSelectedAlertProduct(p);
+                        setAlertModalOpen(true);
+                      }}
+                    />
                   ))}
                 </div>
               ) : (
                 <EmptyState
-                  title="No saved products yet"
-                  description="When searching products across Amazon, Flipkart, and Croma, click Save to bookmark them here."
-                  actionLabel="Browse Shopping"
+                  title="No saved products yet."
+                  description="When searching products across Amazon, Flipkart, and Croma, click Save to bookmark them here for live price tracking."
+                  actionLabel="Explore Products"
                   actionUrl="/shopping"
                 />
               )}
@@ -347,6 +320,18 @@ export const SavedPage = () => {
           )}
 
         </div>
+      )}
+
+      {selectedAlertProduct && (
+        <PriceAlertModal
+          isOpen={alertModalOpen}
+          onClose={() => {
+            setAlertModalOpen(false);
+            setSelectedAlertProduct(null);
+          }}
+          product={selectedAlertProduct}
+          onAlertCreated={loadSavedData}
+        />
       )}
 
     </div>

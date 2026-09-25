@@ -1,16 +1,22 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { searchProducts } from '../services/productService';
-import { PRODUCT_CATEGORIES } from '../utils/constants';
 import SearchBar from '../components/SearchBar';
 import ProductOfferCard from '../components/ProductOfferCard';
+import ProductFilterPanel from '../components/shopping/ProductFilterPanel';
 import PriceHistoryModal from '../components/PriceHistoryModal';
+import ProductComparisonModal from '../components/ProductComparisonModal';
+import PriceAlertModal from '../components/PriceAlertModal';
+import AuthModal from '../components/AuthModal';
+import { useAuth } from '../context/AuthContext';
 import AiRecommendationCard from '../components/AiRecommendationCard';
 import RankingExplanationBanner from '../components/RankingExplanationBanner';
 import LoadingSkeleton from '../components/LoadingSkeleton';
 import EmptyState from '../components/EmptyState';
 import ErrorState from '../components/ErrorState';
 import PersonalizedRankingToolbar from '../components/PersonalizedRankingToolbar';
+import { saveProduct } from '../services/savedService';
+import { recordSearchHistory } from '../services/historyService';
 
 export const ShoppingPage = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -19,10 +25,17 @@ export const ShoppingPage = () => {
   const [query, setQuery] = useState(initialQuery);
   const [selectedCategory, setSelectedCategory] = useState('All Categories');
   const [selectedMerchant, setSelectedMerchant] = useState('all'); // 'all' | 'Amazon' | 'Flipkart' | 'Croma'
-  const [selectedBrand, setSelectedBrand] = useState('all'); // 'all' | 'Apple' | 'Sony' | 'Samsung'
+  const [selectedBrand, setSelectedBrand] = useState('all');
+  const [minPrice, setMinPrice] = useState('');
   const [maxPrice, setMaxPrice] = useState(200000);
+  const [selectedRating, setSelectedRating] = useState('');
   const [inStockOnly, setInStockOnly] = useState(false);
-  const [sortBy, setSortBy] = useState('best'); // 'best' | 'effective_price_asc' | 'price_asc' | 'price_desc' | 'rating' | 'discount'
+  const [selectedRam, setSelectedRam] = useState('all');
+  const [selectedStorage, setSelectedStorage] = useState('all');
+  const [selectedDelivery, setSelectedDelivery] = useState('all');
+
+  // 4 Ranking Tabs: 'best' (Best Value) | 'price_asc' (Cheapest) | 'rating' (Highest Rated) | 'fastest_delivery' (Fastest Delivery)
+  const [sortBy, setSortBy] = useState('best');
 
   const [rankingWeights, setRankingWeights] = useState({
     price: 40,
@@ -41,17 +54,88 @@ export const ShoppingPage = () => {
   const [cheapestMerchant, setCheapestMerchant] = useState(null);
   const [aiRecommendation, setAiRecommendation] = useState(null);
   const [rankingSummary, setRankingSummary] = useState(null);
+  const [failedProviders, setFailedProviders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+
+  const { isAuthenticated } = useAuth();
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+
+  const [comparedOfferKeys, setComparedOfferKeys] = useState([]);
 
   // Price History Modal state
   const [historyModalOpen, setHistoryModalOpen] = useState(false);
   const [selectedProductForHistory, setSelectedProductForHistory] = useState(null);
 
+  // Side-by-Side Product Comparison Modal state
+  const [comparisonModalOpen, setComparisonModalOpen] = useState(false);
+  const [selectedOfferForComparison, setSelectedOfferForComparison] = useState(null);
+
+  // Price Alert Modal state
+  const [priceAlertModalOpen, setPriceAlertModalOpen] = useState(false);
+  const [selectedOfferForAlert, setSelectedOfferForAlert] = useState(null);
+
   const handleOpenPriceHistory = (offer) => {
     setSelectedProductForHistory(offer);
     setHistoryModalOpen(true);
   };
+
+  const handleOpenComparison = (offer) => {
+    setSelectedOfferForComparison(offer);
+    setComparisonModalOpen(true);
+    if (offer && offer.productName) {
+      recordSearchHistory(
+        offer.productName,
+        'PRODUCT_COMPARE',
+        `${offer.merchant || 'Multi-Store'} Comparison`,
+        `/shopping?q=${encodeURIComponent(offer.productName)}`
+      );
+    }
+  };
+
+  const handleSaveOffer = async (offer) => {
+    if (!isAuthenticated) {
+      setAuthModalOpen(true);
+      return;
+    }
+    try {
+      await saveProduct({
+        productId: offer.productId,
+        savedPrice: offer.effectivePrice || offer.price,
+        savedMerchant: offer.merchant,
+      });
+    } catch (err) {
+      console.error('Failed to save product:', err);
+    }
+  };
+
+  const handleOpenPriceAlert = (offer) => {
+    if (!isAuthenticated) {
+      setAuthModalOpen(true);
+      return;
+    }
+    setSelectedOfferForAlert(offer);
+    setPriceAlertModalOpen(true);
+  };
+
+  const handleCompareToggle = (offer) => {
+    const key = `${offer.merchant}-${offer.productName}`;
+    setComparedOfferKeys((prev) =>
+      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]
+    );
+    handleOpenComparison(offer);
+  };
+
+  const activeFilterCount =
+    (selectedBrand !== 'all' ? 1 : 0) +
+    (selectedRating ? 1 : 0) +
+    (inStockOnly ? 1 : 0) +
+    (selectedRam !== 'all' ? 1 : 0) +
+    (selectedStorage !== 'all' ? 1 : 0) +
+    (selectedDelivery !== 'all' ? 1 : 0) +
+    (selectedMerchant !== 'all' ? 1 : 0) +
+    (selectedCategory !== 'All Categories' ? 1 : 0) +
+    (minPrice !== '' && minPrice > 0 || maxPrice < 200000 ? 1 : 0);
 
   const fetchOffers = useCallback(async () => {
     setLoading(true);
@@ -62,24 +146,43 @@ export const ShoppingPage = () => {
         category: selectedCategory,
         merchant: selectedMerchant,
         brand: selectedBrand,
+        minPrice: minPrice !== '' && minPrice > 0 ? minPrice : '',
         maxPrice: maxPrice,
         inStock: inStockOnly ? true : '',
         sortBy: sortBy,
+        minRating: selectedRating,
+        ram: selectedRam,
+        storage: selectedStorage,
+        delivery: selectedDelivery,
       });
 
       setOffers(data.offers || []);
-      setTotalOffers(data.totalOffers || 0);
+      setTotalOffers(data.totalOffers || (data.offers ? data.offers.length : 0));
       setCheapestPrice(data.cheapestPrice);
       setCheapestMerchant(data.cheapestMerchant);
       setAiRecommendation(data.aiRecommendation || null);
       setRankingSummary(data.rankingSummary || null);
+      setFailedProviders(data.failedProviders || []);
     } catch (err) {
       console.error('Failed to load shopping offers:', err);
       setError(err.message || 'Unable to connect to shopping comparison engine');
     } finally {
       setLoading(false);
     }
-  }, [query, selectedCategory, selectedMerchant, selectedBrand, maxPrice, inStockOnly, sortBy]);
+  }, [
+    query,
+    selectedCategory,
+    selectedMerchant,
+    selectedBrand,
+    minPrice,
+    maxPrice,
+    inStockOnly,
+    sortBy,
+    selectedRating,
+    selectedRam,
+    selectedStorage,
+    selectedDelivery,
+  ]);
 
   useEffect(() => {
     fetchOffers();
@@ -89,6 +192,7 @@ export const ShoppingPage = () => {
     setQuery(newQuery);
     if (newQuery) {
       setSearchParams({ q: newQuery });
+      recordSearchHistory(newQuery, 'SHOPPING', 'Product Search', `/shopping?q=${encodeURIComponent(newQuery)}`);
     } else {
       setSearchParams({});
     }
@@ -145,15 +249,25 @@ export const ShoppingPage = () => {
   };
 
   const resetFilters = () => {
-    setQuery('');
     setSelectedCategory('All Categories');
     setSelectedMerchant('all');
     setSelectedBrand('all');
+    setMinPrice('');
     setMaxPrice(200000);
+    setSelectedRating('');
     setInStockOnly(false);
+    setSelectedRam('all');
+    setSelectedStorage('all');
+    setSelectedDelivery('all');
     setSortBy('best');
-    setSearchParams({});
   };
+
+  const rankingTabs = [
+    { id: 'price_asc', label: 'Cheapest', icon: '🏷️' },
+    { id: 'best', label: 'Best Value', icon: '🏆' },
+    { id: 'rating', label: 'Highest Rated', icon: '⭐' },
+    { id: 'fastest_delivery', label: 'Fastest Delivery', icon: '⚡' },
+  ];
 
   return (
     <div className="space-y-6 sm:space-y-8 pb-16 min-w-0">
@@ -193,200 +307,227 @@ export const ShoppingPage = () => {
         <AiRecommendationCard recommendation={aiRecommendation} />
       )}
 
-      {/* Deterministic Ranking Explanation Banner */}
-      {rankingSummary && (
-        <RankingExplanationBanner rankingSummary={rankingSummary} type="product" />
+      {/* Partial Provider Outage Notice */}
+      {failedProviders && failedProviders.length > 0 && (
+        <div className="bg-amber-50 border border-amber-200/90 rounded-2xl p-4 flex items-start gap-3 shadow-xs">
+          <span className="text-xl shrink-0">⚠️</span>
+          <div className="text-xs sm:text-sm text-amber-900">
+            <div className="font-bold">Some stores couldn&apos;t be reached. Showing available results.</div>
+            <div className="text-amber-800/90 text-xs mt-0.5">
+              Unable to reach {failedProviders.join(', ')} in time. Displaying live verified offers from active stores without interruption.
+            </div>
+          </div>
+        </div>
       )}
 
-      {/* Mobile Filter Drawer Button */}
+      {/* Mobile Filter Trigger Bar */}
       <div className="lg:hidden flex items-center justify-between bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs">
         <button
           type="button"
-          onClick={() => setMobileFiltersOpen(!mobileFiltersOpen)}
+          onClick={() => setMobileFiltersOpen(true)}
           className="flex items-center gap-2 text-xs font-bold text-slate-800 bg-slate-100 hover:bg-slate-200 px-4 py-2 rounded-xl transition cursor-pointer min-h-[44px]"
           aria-expanded={mobileFiltersOpen}
-          aria-controls="mobile-filter-drawer"
+          aria-label="Open filters drawer"
         >
           <svg className="w-4 h-4 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
           </svg>
-          <span>{mobileFiltersOpen ? 'Hide Filters' : 'Filter Products'}</span>
+          <span>Filters</span>
+          {activeFilterCount > 0 && (
+            <span className="w-5 h-5 rounded-full bg-indigo-600 text-white text-[10px] font-bold flex items-center justify-center">
+              {activeFilterCount}
+            </span>
+          )}
         </button>
         <span className="text-xs font-semibold text-slate-500 font-mono">
           {offers.length} offers found
         </span>
       </div>
 
-      {/* Main Grid Layout: Sidebar Filters + Products Feed */}
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 sm:gap-8 items-start">
-        
-        {/* Left Filter Sidebar */}
-        <div
-          id="mobile-filter-drawer"
-          className={`${
-            mobileFiltersOpen ? 'block' : 'hidden'
-          } lg:block bg-white p-5 sm:p-6 rounded-3xl border border-slate-200 shadow-xs space-y-6 lg:sticky lg:top-24`}
-        >
-          <div className="flex items-center justify-between pb-4 border-b border-slate-100">
-            <h3 className="font-extrabold text-sm sm:text-base text-slate-900 flex items-center gap-2">
-              <span>🎛️</span>
-              <span>Filters</span>
-            </h3>
-            <button
-              onClick={resetFilters}
-              className="text-xs font-bold text-indigo-600 hover:text-indigo-800 cursor-pointer min-h-[36px] flex items-center"
-            >
-              Reset All
-            </button>
-          </div>
+      {/* Mobile Filter Drawer / Bottom Sheet */}
+      {mobileFiltersOpen && (
+        <div className="fixed inset-0 z-50 lg:hidden overflow-hidden" role="dialog" aria-modal="true">
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs transition-opacity"
+            onClick={() => setMobileFiltersOpen(false)}
+          />
 
-          {/* Category Filter */}
-          <div className="space-y-3">
-            <label className="text-xs font-bold uppercase tracking-wider text-slate-500 block">
-              Category
-            </label>
-            <div className="flex flex-wrap lg:flex-col gap-1.5">
-              {PRODUCT_CATEGORIES.map((cat) => (
+          {/* Drawer Sheet */}
+          <div className="fixed inset-y-0 right-0 max-w-full flex pl-8">
+            <div className="w-screen max-w-md bg-white shadow-2xl flex flex-col justify-between">
+              {/* Drawer Header */}
+              <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">🎛️</span>
+                  <h2 className="font-extrabold text-base text-slate-900">Filters</h2>
+                  {activeFilterCount > 0 && (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-700">
+                      {activeFilterCount} active
+                    </span>
+                  )}
+                </div>
                 <button
-                  key={cat}
-                  onClick={() => setSelectedCategory(cat)}
-                  className={`text-left text-xs font-semibold px-3 py-2 rounded-xl transition cursor-pointer flex items-center justify-between min-h-[36px] ${
-                    selectedCategory === cat
-                      ? 'bg-indigo-600 text-white shadow-xs font-bold'
-                      : 'bg-slate-50 hover:bg-slate-100 text-slate-700'
-                  }`}
+                  type="button"
+                  onClick={() => setMobileFiltersOpen(false)}
+                  className="p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 cursor-pointer min-h-[44px] min-w-[44px] flex items-center justify-center"
+                  aria-label="Close filters"
                 >
-                  <span>{cat}</span>
-                  {selectedCategory === cat && <span className="text-xs">✓</span>}
+                  ✕
                 </button>
-              ))}
-            </div>
-          </div>
+              </div>
 
-          {/* Merchant Filter */}
-          <div className="space-y-3 pt-4 border-t border-slate-100">
-            <label className="text-xs font-bold uppercase tracking-wider text-slate-500 block">
-              Merchant
-            </label>
-            <div className="grid grid-cols-2 lg:grid-cols-1 gap-1.5">
-              {[
-                { id: 'all', label: 'All Stores' },
-                { id: 'Amazon', label: 'Amazon' },
-                { id: 'Flipkart', label: 'Flipkart' },
-                { id: 'Croma', label: 'Croma' },
-              ].map((m) => (
+              {/* Scrollable Filters Body */}
+              <div className="p-5 overflow-y-auto space-y-6 flex-1">
+                <ProductFilterPanel
+                  selectedCategory={selectedCategory}
+                  setSelectedCategory={setSelectedCategory}
+                  selectedMerchant={selectedMerchant}
+                  setSelectedMerchant={setSelectedMerchant}
+                  selectedBrand={selectedBrand}
+                  setSelectedBrand={setSelectedBrand}
+                  minPrice={minPrice}
+                  setMinPrice={setMinPrice}
+                  maxPrice={maxPrice}
+                  setMaxPrice={setMaxPrice}
+                  selectedRating={selectedRating}
+                  setSelectedRating={setSelectedRating}
+                  inStockOnly={inStockOnly}
+                  setInStockOnly={setInStockOnly}
+                  selectedRam={selectedRam}
+                  setSelectedRam={setSelectedRam}
+                  selectedStorage={selectedStorage}
+                  setSelectedStorage={setSelectedStorage}
+                  selectedDelivery={selectedDelivery}
+                  setSelectedDelivery={setSelectedDelivery}
+                  onReset={resetFilters}
+                  activeFilterCount={activeFilterCount}
+                />
+              </div>
+
+              {/* Drawer Footer with Clear Filters and Apply Filters */}
+              <div className="p-4 border-t border-slate-100 bg-slate-50 flex items-center gap-3">
                 <button
-                  key={m.id}
-                  onClick={() => setSelectedMerchant(m.id)}
-                  className={`text-left text-xs font-semibold px-3 py-2 rounded-xl transition cursor-pointer flex items-center justify-between min-h-[36px] ${
-                    selectedMerchant === m.id
-                      ? 'bg-slate-900 text-white font-bold shadow-xs'
-                      : 'bg-slate-50 hover:bg-slate-100 text-slate-700'
-                  }`}
+                  type="button"
+                  onClick={resetFilters}
+                  className="flex-1 py-3 px-4 rounded-xl text-xs font-bold bg-white text-slate-700 border border-slate-200 hover:bg-slate-100 transition cursor-pointer min-h-[44px]"
                 >
-                  <span>{m.label}</span>
-                  {selectedMerchant === m.id && <span className="text-xs">✓</span>}
+                  Clear Filters
                 </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Brand Filter */}
-          <div className="space-y-3 pt-4 border-t border-slate-100">
-            <label className="text-xs font-bold uppercase tracking-wider text-slate-500 block">
-              Brand
-            </label>
-            <div className="grid grid-cols-2 lg:grid-cols-1 gap-1.5">
-              {[
-                { id: 'all', label: 'All Brands' },
-                { id: 'Apple', label: 'Apple' },
-                { id: 'Samsung', label: 'Samsung' },
-                { id: 'Sony', label: 'Sony' },
-              ].map((b) => (
                 <button
-                  key={b.id}
-                  onClick={() => setSelectedBrand(b.id)}
-                  className={`text-left text-xs font-semibold px-3 py-2 rounded-xl transition cursor-pointer flex items-center justify-between min-h-[36px] ${
-                    selectedBrand === b.id
-                      ? 'bg-indigo-600 text-white font-bold shadow-xs'
-                      : 'bg-slate-50 hover:bg-slate-100 text-slate-700'
-                  }`}
+                  type="button"
+                  onClick={() => {
+                    setMobileFiltersOpen(false);
+                    fetchOffers();
+                  }}
+                  className="flex-1 py-3 px-4 rounded-xl text-xs font-bold bg-indigo-600 text-white hover:bg-indigo-700 shadow-xs transition cursor-pointer min-h-[44px]"
                 >
-                  <span>{b.label}</span>
-                  {selectedBrand === b.id && <span className="text-xs">✓</span>}
+                  Apply Filters
                 </button>
-              ))}
+              </div>
             </div>
-          </div>
-
-          {/* Max Price Range */}
-          <div className="space-y-3 pt-4 border-t border-slate-100">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                Max Price
-              </label>
-              <span className="text-xs font-bold text-slate-900 font-mono">
-                ₹{maxPrice.toLocaleString('en-IN')}
-              </span>
-            </div>
-            <input
-              type="range"
-              min="20000"
-              max="200000"
-              step="5000"
-              value={maxPrice}
-              onChange={(e) => setMaxPrice(Number(e.target.value))}
-              aria-label="Maximum price filter"
-              className="w-full accent-indigo-600 cursor-pointer"
-            />
-          </div>
-
-          {/* In Stock Only */}
-          <div className="pt-4 border-t border-slate-100">
-            <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer select-none min-h-[36px]">
-              <input
-                type="checkbox"
-                checked={inStockOnly}
-                onChange={(e) => setInStockOnly(e.target.checked)}
-                className="rounded text-indigo-600 focus:ring-indigo-500 w-4 h-4 cursor-pointer"
-              />
-              <span>In Stock Only</span>
-            </label>
           </div>
         </div>
+      )}
 
-        {/* Right Main Product Feed */}
-        <div className="lg:col-span-3 space-y-6 min-w-0">
+      {/* Main Grid Layout: LEFT Filters + RIGHT Product Results */}
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 sm:gap-8 items-start">
+        
+        {/* LEFT: Desktop Sticky Filter Sidebar */}
+        <aside className="hidden lg:block bg-white p-5 sm:p-6 rounded-3xl border border-slate-200 shadow-xs lg:sticky lg:top-24">
+          <ProductFilterPanel
+            selectedCategory={selectedCategory}
+            setSelectedCategory={setSelectedCategory}
+            selectedMerchant={selectedMerchant}
+            setSelectedMerchant={setSelectedMerchant}
+            selectedBrand={selectedBrand}
+            setSelectedBrand={setSelectedBrand}
+            minPrice={minPrice}
+            setMinPrice={setMinPrice}
+            maxPrice={maxPrice}
+            setMaxPrice={setMaxPrice}
+            selectedRating={selectedRating}
+            setSelectedRating={setSelectedRating}
+            inStockOnly={inStockOnly}
+            setInStockOnly={setInStockOnly}
+            selectedRam={selectedRam}
+            setSelectedRam={setSelectedRam}
+            selectedStorage={selectedStorage}
+            setSelectedStorage={setSelectedStorage}
+            selectedDelivery={selectedDelivery}
+            setSelectedDelivery={setSelectedDelivery}
+            onReset={resetFilters}
+            activeFilterCount={activeFilterCount}
+          />
+        </aside>
+
+        {/* RIGHT: Product Results Feed */}
+        <main className="lg:col-span-3 space-y-6 min-w-0">
           
-          {/* Controls Bar: Count & Sort */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200 shadow-xs">
-            <div className="text-xs sm:text-sm text-slate-600">
-              Showing <strong className="text-slate-900 font-bold">{offers.length}</strong> offers
-              {query && <span> for &ldquo;<strong>{query}</strong>&rdquo;</span>}
-              {selectedMerchant !== 'all' && <span> on <strong className="text-indigo-600">{selectedMerchant}</strong></span>}
+          {/* Top Results Header with Query, Count & Backend Ranking Tabs */}
+          <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+            
+            {/* Query & Result Count Display */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <div className="text-xs sm:text-sm text-slate-600">
+                  Showing <strong className="text-slate-900 font-bold">{offers.length}</strong> offers
+                  {query && <span> for &ldquo;<strong className="text-indigo-600">{query}</strong>&rdquo;</span>}
+                  {selectedMerchant !== 'all' && <span> on <strong className="text-indigo-600">{selectedMerchant}</strong></span>}
+                </div>
+                <div className="text-[11px] text-slate-400 mt-0.5">
+                  {totalOffers > 0 && `Total matched: ${totalOffers} across active providers`}
+                </div>
+              </div>
+
+              {/* Fallback Dropdown for Extra Sort Options */}
+              <div className="flex items-center gap-1.5 self-start sm:self-auto">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Sort:</span>
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value)}
+                  aria-label="Sort products by"
+                  className="bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-800 rounded-xl px-2.5 py-1.5 focus:outline-hidden focus:border-indigo-500 cursor-pointer min-h-[36px]"
+                >
+                  <option value="best">🏆 Best Value</option>
+                  <option value="price_asc">🏷️ Cheapest</option>
+                  <option value="rating">⭐ Highest Rated</option>
+                  <option value="fastest_delivery">⚡ Fastest Delivery</option>
+                  <option value="price_desc">Price: High to Low</option>
+                  <option value="discount">Discount Percentage</option>
+                  <option value="effective_price_asc">Effective Net Price</option>
+                </select>
+              </div>
             </div>
 
-            <div className="flex items-center gap-2 self-start sm:self-auto">
-              <label className="text-xs font-bold uppercase tracking-wider text-slate-500 shrink-0">
-                Sort By:
-              </label>
-              <select
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value)}
-                aria-label="Sort products by"
-                className="bg-slate-50 border border-slate-200 text-xs sm:text-sm font-semibold text-slate-800 rounded-xl px-3 py-1.5 focus:outline-hidden focus:border-indigo-500 cursor-pointer min-h-[36px]"
-              >
-                <option value="best">🏆 Best Value (Personalized)</option>
-                <option value="effective_price_asc">🏷️ Effective Price: Low to High</option>
-                <option value="price_asc">Price: Low to High</option>
-                <option value="price_desc">Price: High to Low</option>
-                <option value="rating">Rating</option>
-                <option value="discount">Discount Percentage</option>
-              </select>
+            {/* 4 Ranking Tabs: Cheapest, Best Value, Highest Rated, Fastest Delivery */}
+            <div className="pt-3 border-t border-slate-100">
+              <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar" role="tablist" aria-label="Ranking tabs">
+                {rankingTabs.map((tab) => {
+                  const isActive = sortBy === tab.id;
+                  return (
+                    <button
+                      key={tab.id}
+                      role="tab"
+                      aria-selected={isActive}
+                      onClick={() => setSortBy(tab.id)}
+                      className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 transition cursor-pointer whitespace-nowrap border shrink-0 ${
+                        isActive
+                          ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm ring-2 ring-indigo-500/20'
+                          : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100 hover:text-slate-900'
+                      }`}
+                    >
+                      <span>{tab.icon}</span>
+                      <span>{tab.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
+
           </div>
 
-          {/* Product Feed / Error / Skeleton / Empty */}
+          {/* Product Feed / Error / Skeleton / Empty State */}
           {loading ? (
             <LoadingSkeleton type="product-card" count={6} />
           ) : error ? (
@@ -404,17 +545,25 @@ export const ShoppingPage = () => {
             />
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5 sm:gap-6">
-              {offers.map((offer, idx) => (
-                <ProductOfferCard
-                  key={`${offer.merchant}-${offer.productName}-${idx}`}
-                  offer={offer}
-                  onViewPriceHistory={handleOpenPriceHistory}
-                />
-              ))}
+              {offers.map((offer, idx) => {
+                const cardKey = `${offer.merchant}-${offer.productName}-${idx}`;
+                const isCompared = comparedOfferKeys.includes(`${offer.merchant}-${offer.productName}`);
+                return (
+                  <ProductOfferCard
+                    key={cardKey}
+                    offer={offer}
+                    onSave={handleSaveOffer}
+                    onViewPriceHistory={handleOpenPriceHistory}
+                    onCompare={handleCompareToggle}
+                    onSetPriceAlert={handleOpenPriceAlert}
+                    isCompared={isCompared}
+                  />
+                );
+              })}
             </div>
           )}
 
-        </div>
+        </main>
 
       </div>
 
@@ -423,6 +572,29 @@ export const ShoppingPage = () => {
         isOpen={historyModalOpen}
         onClose={() => setHistoryModalOpen(false)}
         product={selectedProductForHistory}
+      />
+
+      {/* Side-by-Side Product Comparison Modal */}
+      <ProductComparisonModal
+        isOpen={comparisonModalOpen}
+        onClose={() => setComparisonModalOpen(false)}
+        selectedOffer={selectedOfferForComparison}
+        allOffers={offers}
+        onSetPriceAlert={handleOpenPriceAlert}
+      />
+
+      {/* Price Alert Modal */}
+      <PriceAlertModal
+        isOpen={priceAlertModalOpen}
+        onClose={() => setPriceAlertModalOpen(false)}
+        product={selectedOfferForAlert}
+        onOpenAuthModal={() => setAuthModalOpen(true)}
+      />
+
+      {/* Auth Modal for Unauthenticated Users */}
+      <AuthModal
+        isOpen={authModalOpen}
+        onClose={() => setAuthModalOpen(false)}
       />
 
     </div>

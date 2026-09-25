@@ -15,4 +15,8 @@ public class SavedProductRequestDto {
 
     @NotNull(message = "Product ID is required")
     private Long productId;
+
+    private java.math.BigDecimal savedPrice;
+
+    private String savedMerchant;
 }

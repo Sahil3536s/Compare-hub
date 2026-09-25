@@ -42,6 +42,7 @@ public class RedisCacheConfig {
     public static final String CACHE_GEOCODING_LOCATIONS = "geocoding-locations";
     public static final String CACHE_PROVIDER_METADATA = "provider-metadata";
     public static final String CACHE_PROVIDER_HEALTH = "provider-health";
+    public static final String CACHE_AIRPORT_SEARCHES = "airport-searches";
 
     @Bean
     @Primary
@@ -96,6 +97,10 @@ public class RedisCacheConfig {
         cacheConfigurations.put(CACHE_PROVIDER_HEALTH,
                 defaultConfiguration.entryTtl(Duration.ofMinutes(5)));
 
+        // Airport Searches: 24 hours TTL (airports/cities are static reference data)
+        cacheConfigurations.put(CACHE_AIRPORT_SEARCHES,
+                defaultConfiguration.entryTtl(Duration.ofHours(24)));
+
         return RedisCacheManager.builder(connectionFactory)
                 .cacheDefaults(defaultConfiguration)
                 .withInitialCacheConfigurations(cacheConfigurations)
@@ -108,7 +113,8 @@ public class RedisCacheConfig {
                 CACHE_FLIGHT_SEARCHES,
                 CACHE_GEOCODING_LOCATIONS,
                 CACHE_PROVIDER_METADATA,
-                CACHE_PROVIDER_HEALTH
+                CACHE_PROVIDER_HEALTH,
+                CACHE_AIRPORT_SEARCHES
         );
         caffeineCacheManager.setCaffeine(Caffeine.newBuilder()
                 .maximumSize(1000)

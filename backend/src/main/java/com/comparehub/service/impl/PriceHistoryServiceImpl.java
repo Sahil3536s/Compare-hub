@@ -103,34 +103,18 @@ public class PriceHistoryServiceImpl implements PriceHistoryService {
                             .build())
                     .collect(Collectors.toList());
         } else {
-            // Synthesize realistic baseline price points for this product if no historical data exists yet
-            BigDecimal basePrice = product.getOffers() != null && !product.getOffers().isEmpty()
-                    ? product.getOffers().get(0).getPrice()
-                    : BigDecimal.valueOf(50000.00);
-
-            LocalDate today = LocalDate.now();
-            int sampleCount = Math.min(days, 15);
-            int stepDays = Math.max(1, days / sampleCount);
-
-            Random random = new Random(productId.hashCode());
-            for (int i = sampleCount; i >= 0; i--) {
-                LocalDate pointDate = today.minusDays((long) i * stepDays);
-                // Slight variance between -6% and +8%
-                double variation = 1.0 + ((random.nextDouble() * 0.14) - 0.06);
-                BigDecimal pointPrice = basePrice.multiply(BigDecimal.valueOf(variation))
-                        .setScale(2, RoundingMode.HALF_UP);
-
-                if (i == 0) {
-                    pointPrice = basePrice; // Current day matches exact base price
-                }
-
-                pricePoints.add(PricePointDto.builder()
-                        .date(pointDate.toString())
-                        .price(pointPrice)
-                        .merchant("Amazon / Flipkart")
-                        .recordedAt(pointDate.atStartOfDay(ZoneId.systemDefault()).toInstant())
-                        .build());
-            }
+            return ProductPriceHistoryResponseDto.builder()
+                    .productId(productId)
+                    .productName(product.getName())
+                    .period(sanitizedPeriod)
+                    .currentPrice(product.getOffers() != null && !product.getOffers().isEmpty() ? product.getOffers().get(0).getPrice() : BigDecimal.ZERO)
+                    .lowestPrice(BigDecimal.ZERO)
+                    .highestPrice(BigDecimal.ZERO)
+                    .averagePrice(BigDecimal.ZERO)
+                    .currency("INR")
+                    .analysisText("Price history is not available yet.")
+                    .pricePoints(Collections.emptyList())
+                    .build();
         }
 
         // Calculate statistics

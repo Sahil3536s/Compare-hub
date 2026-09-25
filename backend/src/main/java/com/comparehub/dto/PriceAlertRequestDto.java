@@ -20,6 +20,9 @@ public class PriceAlertRequestDto {
     @NotNull(message = "Product ID is required")
     private Long productId;
 
+    private String productName;
+    private String merchant;
+
     @NotNull(message = "Target price is required")
     @DecimalMin(value = "0.01", message = "Target price must be greater than zero")
     private BigDecimal targetPrice;

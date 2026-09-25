@@ -115,6 +115,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/alerts/**").authenticated()
                         .requestMatchers("/api/saved/**").authenticated()
                         .requestMatchers("/api/history/**").authenticated()
+                        .requestMatchers("/api/dashboard/**").authenticated()
                         .requestMatchers("/api/notifications/**").authenticated()
                         // Any other request
                         .anyRequest().authenticated()

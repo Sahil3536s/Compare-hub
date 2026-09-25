@@ -14,6 +14,7 @@ export const ROUTES = {
   RIDES: '/rides',
   ALERTS: '/alerts',
   SAVED: '/saved',
+  DASHBOARD: '/dashboard',
   SAVINGS: '/savings',
   HISTORY: '/history',
   NOTIFICATIONS: '/notifications',

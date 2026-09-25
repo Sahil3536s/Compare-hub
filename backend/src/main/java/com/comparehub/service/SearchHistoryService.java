@@ -21,4 +21,8 @@ public interface SearchHistoryService {
     RideSearchResponseDto recordRideSearch(RideSearchRequestDto request);
 
     List<RideSearchResponseDto> getUserRideSearches(Long userId);
+
+    List<UserDashboardResponseDto.RecentActivityDto> getUserRecentActivity(Long userId, int limit);
+
+    List<UserDashboardResponseDto.RecentComparisonDto> getUserRecentComparisons(Long userId, int limit);
 }

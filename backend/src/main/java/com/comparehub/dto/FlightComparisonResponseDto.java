@@ -25,6 +25,8 @@ public class FlightComparisonResponseDto {
     private String bestAirline;
     @Builder.Default
     private List<NormalizedFlightOfferDto> offers = new ArrayList<>();
+    @Builder.Default
+    private List<String> failedProviders = new ArrayList<>();
     private AiRecommendationDto aiRecommendation;
     private RankingSummaryDto rankingSummary;
 }

@@ -22,4 +22,8 @@ public class SearchHistoryRequestDto {
 
     @NotNull(message = "Search type is required")
     private SearchType searchType;
+
+    private String details;
+
+    private String targetUrl;
 }

@@ -30,37 +30,45 @@ public class ComparisonRecommendationServiceImpl implements ComparisonRecommenda
 
         // 1. Identify cheapest
         NormalizedProductOfferDto cheapest = offers.stream()
-                .min(Comparator.comparing(NormalizedProductOfferDto::getPrice))
-                .orElse(offers.get(0));
+                .filter(o -> Boolean.TRUE.equals(o.getIsCheapest()))
+                .findFirst()
+                .orElseGet(() -> offers.stream()
+                        .min(Comparator.comparing(o -> o.getEffectivePrice() != null ? o.getEffectivePrice() : (o.getPrice() != null ? o.getPrice() : BigDecimal.ZERO)))
+                        .orElse(offers.get(0)));
 
         // 2. Identify best overall considering: Price, Rating, Discount, Delivery, Stock
         NormalizedProductOfferDto bestOverall = offers.stream()
-                .max(Comparator.comparingDouble(o -> {
-                    double ratingWeight = (o.getRating() != null ? o.getRating() : 3.5) * 20.0; // 0-100
-                    double stockBonus = Boolean.TRUE.equals(o.getInStock()) ? 30.0 : -50.0;
-                    double discountBonus = o.getDiscountPercent() != null ? Math.min(30.0, o.getDiscountPercent()) : 0.0;
-                    double pricePenalty = (o.getPrice().doubleValue() / cheapest.getPrice().doubleValue()) * 50.0;
-                    double deliveryBonus = (o.getDelivery() != null && o.getDelivery().toLowerCase().contains("tomorrow")
-                            || (o.getDelivery() != null && o.getDelivery().toLowerCase().contains("same day"))) ? 25.0 : 10.0;
-                    return ratingWeight + stockBonus + discountBonus + deliveryBonus - pricePenalty;
-                }))
-                .orElse(cheapest);
+                .filter(o -> Boolean.TRUE.equals(o.getIsBestValue()))
+                .findFirst()
+                .orElseGet(() -> offers.stream()
+                        .max(Comparator.comparingDouble(o -> {
+                            double ratingWeight = (o.getRating() != null ? o.getRating() : 3.5) * 20.0;
+                            double stockBonus = Boolean.TRUE.equals(o.getInStock()) ? 30.0 : -50.0;
+                            double discountBonus = o.getDiscountPercent() != null ? Math.min(30.0, o.getDiscountPercent()) : 0.0;
+                            double pricePenalty = (o.getPrice().doubleValue() / cheapest.getPrice().doubleValue()) * 50.0;
+                            double deliveryBonus = (o.getDelivery() != null && (o.getDelivery().toLowerCase().contains("tomorrow")
+                                    || o.getDelivery().toLowerCase().contains("same day"))) ? 25.0 : 10.0;
+                            return ratingWeight + stockBonus + discountBonus + deliveryBonus - pricePenalty;
+                        }))
+                        .orElse(cheapest));
 
         List<String> reasons = new ArrayList<>();
-        String recommendation;
+        if (bestOverall.getWhyThisOption() != null && !bestOverall.getWhyThisOption().isEmpty()) {
+            reasons.addAll(bestOverall.getWhyThisOption());
+        }
 
+        String recommendation;
         if (cheapest.equals(bestOverall) || cheapest.getMerchant().equalsIgnoreCase(bestOverall.getMerchant())) {
             recommendation = String.format("%s offers the absolute lowest price at ₹%s with a %s★ rating and confirmed stock.",
                     cheapest.getMerchant(),
                     cheapest.getPrice().toPlainString(),
                     cheapest.getRating() != null ? cheapest.getRating().toString() : "4.0");
 
-            reasons.add(String.format("Lowest price available across verified stores (₹%s).", cheapest.getPrice().toPlainString()));
-            if (cheapest.getDelivery() != null) {
-                reasons.add(String.format("Estimated delivery: %s.", cheapest.getDelivery()));
-            }
-            if (cheapest.getDiscountPercent() != null && cheapest.getDiscountPercent() > 0) {
-                reasons.add(String.format("Discount of %d%% off original price.", cheapest.getDiscountPercent()));
+            if (reasons.isEmpty()) {
+                reasons.add(String.format("Lowest price available across verified stores (₹%s).", cheapest.getPrice().toPlainString()));
+                if (cheapest.getDelivery() != null) {
+                    reasons.add(String.format("Estimated delivery: %s.", cheapest.getDelivery()));
+                }
             }
         } else {
             BigDecimal priceDiff = bestOverall.getPrice().subtract(cheapest.getPrice()).abs();
@@ -72,14 +80,16 @@ public class ComparisonRecommendationServiceImpl implements ComparisonRecommenda
                     cheapest.getRating() != null ? cheapest.getRating() : "4.0",
                     bestOverall.getDelivery() != null ? bestOverall.getDelivery() : "reliable courier delivery");
 
-            reasons.add(String.format("Cheapest Option: %s at ₹%s.", cheapest.getMerchant(), cheapest.getPrice().toPlainString()));
-            reasons.add(String.format("Best Value: %s at ₹%s with %s★ customer satisfaction score.",
-                    bestOverall.getMerchant(), bestOverall.getPrice().toPlainString(), bestOverall.getRating()));
-            if (bestOverall.getDelivery() != null) {
-                reasons.add(String.format("Delivery timeline: %s via %s.", bestOverall.getDelivery(), bestOverall.getMerchant()));
-            }
-            if (Boolean.TRUE.equals(bestOverall.getInStock())) {
-                reasons.add(String.format("In-stock availability confirmed at %s.", bestOverall.getMerchant()));
+            if (reasons.isEmpty()) {
+                reasons.add(String.format("Cheapest Option: %s at ₹%s.", cheapest.getMerchant(), cheapest.getPrice().toPlainString()));
+                reasons.add(String.format("Best Value: %s at ₹%s with %s★ customer satisfaction score.",
+                        bestOverall.getMerchant(), bestOverall.getPrice().toPlainString(), bestOverall.getRating()));
+                if (bestOverall.getDelivery() != null) {
+                    reasons.add(String.format("Delivery timeline: %s via %s.", bestOverall.getDelivery(), bestOverall.getMerchant()));
+                }
+                if (Boolean.TRUE.equals(bestOverall.getInStock())) {
+                    reasons.add(String.format("In-stock availability confirmed at %s.", bestOverall.getMerchant()));
+                }
             }
         }
 

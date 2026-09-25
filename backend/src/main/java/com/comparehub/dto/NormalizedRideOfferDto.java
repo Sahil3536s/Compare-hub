@@ -23,6 +23,11 @@ public class NormalizedRideOfferDto {
     @Builder.Default
     private String currency = "INR";
     private String deepLink;
+    private Integer durationMinutes; // Estimated journey duration
+    @Builder.Default
+    private Boolean isMock = true; // Indicates demo/simulation mode where authorized API is not active
+    @Builder.Default
+    private String dataSource = "Demo / Simulated Fare Model";
 
     // Badges calculated by RideRankingService
     @Builder.Default

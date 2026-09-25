@@ -5,12 +5,14 @@ export const getSearchHistory = async () => {
   return response.data; // [{ id, userId, query, searchType, createdAt }]
 };
 
-export const recordSearchHistory = async (query, searchType = 'SHOPPING') => {
+export const recordSearchHistory = async (query, searchType = 'SHOPPING', details = null, targetUrl = null) => {
   if (!query || !query.trim()) return null;
   try {
     const response = await apiClient.post('/history', {
       query: query.trim(),
       searchType,
+      details,
+      targetUrl,
     });
     return response.data;
   } catch (e) {

@@ -64,26 +64,34 @@ const ConfidenceDot = ({ label }) => {
   );
 };
 
-const MLPredictionSection = ({ productId }) => {
-  const [prediction, setPrediction] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [fetchError, setFetchError] = useState(false);
+const MLPredictionSection = ({ productId, prediction: parentPred, loading: parentLoading, fetchError: parentError }) => {
+  const [internalPrediction, setInternalPrediction] = useState(null);
+  const [internalLoading, setInternalLoading] = useState(true);
+  const [internalFetchError, setInternalFetchError] = useState(false);
+
+  const isControlled = parentPred !== undefined;
+  const prediction = isControlled ? parentPred : internalPrediction;
+  const loading = isControlled ? parentLoading : internalLoading;
+  const fetchError = isControlled ? parentError : internalFetchError;
 
   useEffect(() => {
-    if (!productId) return;
-    setLoading(true);
-    setFetchError(false);
+    if (isControlled || !productId) return;
+    setInternalLoading(true);
+    setInternalFetchError(false);
     getProductPrediction(productId)
-      .then((data) => setPrediction(data))
-      .catch(() => setFetchError(true))
-      .finally(() => setLoading(false));
-  }, [productId]);
+      .then((data) => setInternalPrediction(data))
+      .catch(() => setInternalFetchError(true))
+      .finally(() => setInternalLoading(false));
+  }, [productId, isControlled]);
 
   // ── Loading ──
   if (loading) {
     return (
-      <div className="border-t border-slate-100 pt-5 mt-2 space-y-3">
+      <div className="border-t border-slate-100 pt-5 mt-2 space-y-3" data-testid="ml-loading-state">
         <div className="flex items-center gap-2">
+          <span className="text-sm font-black text-slate-900 tracking-tight">
+            💡 SMART PRICE INSIGHT
+          </span>
           <span className="text-[10px] font-bold text-violet-600 uppercase tracking-wider bg-violet-50 px-2.5 py-1 rounded-md">
             🤖 ML Price Prediction
           </span>
@@ -99,14 +107,17 @@ const MLPredictionSection = ({ productId }) => {
   // ── Network / fetch error ──
   if (fetchError) {
     return (
-      <div className="border-t border-slate-100 pt-5 mt-2">
-        <div className="flex items-center gap-2 mb-3">
+      <div className="border-t border-slate-100 pt-5 mt-2 space-y-2">
+        <div className="flex items-center gap-2 mb-2">
+          <span className="text-sm font-black text-slate-900 tracking-tight">
+            💡 SMART PRICE INSIGHT
+          </span>
           <span className="text-[10px] font-bold text-violet-600 uppercase tracking-wider bg-violet-50 px-2.5 py-1 rounded-md">
             🤖 ML Price Prediction
           </span>
         </div>
         <div className="bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-xl p-3">
-          Could not reach the prediction service. Please try again later.
+          Price prediction is temporarily unavailable. Could not reach the prediction service. Please try again later.
         </div>
       </div>
     );
@@ -117,16 +128,22 @@ const MLPredictionSection = ({ productId }) => {
   // ── Insufficient data ──
   if (status === 'INSUFFICIENT_DATA') {
     return (
-      <div className="border-t border-slate-100 pt-5 mt-2">
-        <div className="flex items-center gap-2 mb-3">
+      <div className="border-t border-slate-100 pt-5 mt-2 space-y-3">
+        <div className="flex items-center gap-2 mb-1">
+          <span className="text-sm font-black text-slate-900 tracking-tight">
+            💡 SMART PRICE INSIGHT
+          </span>
           <span className="text-[10px] font-bold text-violet-600 uppercase tracking-wider bg-violet-50 px-2.5 py-1 rounded-md">
             🤖 ML Price Prediction
           </span>
         </div>
-        <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl text-center">
-          <p className="text-2xl mb-2">📈</p>
-          <p className="text-sm font-bold text-slate-700">Not enough price history yet</p>
-          <p className="text-xs text-slate-400 mt-1">
+        <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl text-center space-y-1">
+          <p className="text-2xl mb-1">📈</p>
+          <p className="text-sm font-bold text-slate-800">Not enough price history yet</p>
+          <p className="text-xs text-slate-600 font-medium">
+            More price history is required before a reliable prediction can be generated.
+          </p>
+          <p className="text-[11px] text-slate-400 mt-1">
             {prediction?.message ||
               'More price observations are needed before a reliable ML prediction can be generated.'}
           </p>
@@ -135,11 +152,14 @@ const MLPredictionSection = ({ productId }) => {
     );
   }
 
-  // ── ML service down ──
-  if (status === 'ML_UNAVAILABLE' || status === 'MODEL_NOT_LOADED') {
+  // ── ML service down / unavailable / invalid response ──
+  if (status === 'TEMPORARILY_UNAVAILABLE' || status === 'ML_UNAVAILABLE' || status === 'MODEL_NOT_LOADED' || status === 'INVALID_RESPONSE' || status === 'ERROR') {
     return (
-      <div className="border-t border-slate-100 pt-5 mt-2">
-        <div className="flex items-center gap-2 mb-3">
+      <div className="border-t border-slate-100 pt-5 mt-2 space-y-3">
+        <div className="flex items-center gap-2 mb-1">
+          <span className="text-sm font-black text-slate-900 tracking-tight">
+            💡 SMART PRICE INSIGHT
+          </span>
           <span className="text-[10px] font-bold text-violet-600 uppercase tracking-wider bg-violet-50 px-2.5 py-1 rounded-md">
             🤖 ML Price Prediction
           </span>
@@ -148,6 +168,9 @@ const MLPredictionSection = ({ productId }) => {
           <span className="text-lg shrink-0">⚙️</span>
           <div>
             <p className="text-xs font-bold text-amber-900">Prediction temporarily unavailable</p>
+            <p className="text-xs text-amber-800 font-medium mt-0.5">
+              Price prediction is temporarily unavailable.
+            </p>
             <p className="text-[11px] text-amber-700 mt-0.5">
               {prediction?.message ||
                 'The ML service is temporarily unavailable. All other comparison features continue to work normally.'}
@@ -173,13 +196,23 @@ const MLPredictionSection = ({ productId }) => {
     : 'text-slate-500';
   const changeArrow = changeIsPositive ? '↑' : changeIsNegative ? '↓' : '→';
 
+  const predPrice = prediction.predictedPrice7d != null ? prediction.predictedPrice7d : prediction.predictedPrice7Days;
+  const rangeLow = prediction.predictedPriceLow != null ? prediction.predictedPriceLow : prediction.predictionRangeLow;
+  const rangeHigh = prediction.predictedPriceHigh != null ? prediction.predictedPriceHigh : prediction.predictionRangeHigh;
+  const modelName = prediction.modelName || prediction.model || 'RandomForestRegressor';
+
   return (
     <div className="border-t border-slate-100 pt-5 mt-2 space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <span className="text-[10px] font-bold text-violet-600 uppercase tracking-wider bg-violet-50 px-2.5 py-1 rounded-md">
-          🤖 ML Price Prediction
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-black text-slate-900 tracking-tight flex items-center gap-1.5">
+            💡 SMART PRICE INSIGHT
+          </span>
+          <span className="text-[10px] font-bold text-violet-600 uppercase tracking-wider bg-violet-50 px-2.5 py-1 rounded-md border border-violet-200/60">
+            🤖 ML Price Prediction
+          </span>
+        </div>
         {prediction.confidenceLabel && (
           <ConfidenceDot label={prediction.confidenceLabel} />
         )}
@@ -200,17 +233,20 @@ const MLPredictionSection = ({ productId }) => {
         {/* Estimated Price in 7 Days */}
         <div className="bg-violet-50 p-3 rounded-2xl border border-violet-100 text-center sm:text-left">
           <span className="text-[10px] font-bold uppercase tracking-wider text-violet-700 block">
-            Est. Price in 7d
+            Estimated Price in 7 Days
           </span>
           <span className="text-sm sm:text-base font-black text-violet-900 font-mono mt-0.5 block">
-            ₹{fmt(prediction.predictedPrice7d)}
+            ₹{fmt(predPrice)}
+          </span>
+          <span className="text-[10px] text-violet-600/70 font-semibold block">
+            Est. Price in 7d
           </span>
         </div>
 
-        {/* Estimated Change */}
+        {/* Expected Change */}
         <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100 text-center sm:text-left">
           <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
-            Est. Change
+            Expected Change
           </span>
           <span className={`text-sm sm:text-base font-black font-mono mt-0.5 block ${changeColor}`}>
             {changeArrow} ₹{fmt(Math.abs(prediction.predictedChange))}
@@ -257,20 +293,20 @@ const MLPredictionSection = ({ productId }) => {
       )}
 
       {/* Estimated Range */}
-      {prediction.predictedPriceLow != null && prediction.predictedPriceHigh != null && (
+      {rangeLow != null && rangeHigh != null && (
         <div className="bg-slate-900 text-white p-4 rounded-2xl border border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div className="space-y-0.5">
             <span className="text-[10px] font-bold text-violet-400 uppercase tracking-wider block">
-              Estimated Price Range (7d)
+              Estimated Range (7d)
             </span>
             <span className="text-sm font-mono font-bold text-white">
-              ₹{fmt(prediction.predictedPriceLow)} – ₹{fmt(prediction.predictedPriceHigh)}
+              ₹{fmt(rangeLow)} – ₹{fmt(rangeHigh)}
             </span>
           </div>
           <div className="text-right shrink-0">
             <span className="text-[10px] text-slate-400 block uppercase">Model</span>
             <span className="text-xs font-mono font-bold text-violet-300">
-              {prediction.modelName || '—'}
+              {modelName}
             </span>
             {prediction.modelVersion && (
               <span className="text-[10px] text-slate-500 block">v{prediction.modelVersion}</span>
@@ -279,11 +315,16 @@ const MLPredictionSection = ({ productId }) => {
         </div>
       )}
 
-      {/* Disclaimer */}
-      <p className="text-[10px] text-slate-400 text-center leading-relaxed">
-        Based on historical price patterns. Predicted prices are estimates, not guaranteed future prices.
-        Deal quality classification is statistical, not ML-based.
-      </p>
+      {/* Disclaimers */}
+      <div className="space-y-1 text-center">
+        <p className="text-xs font-semibold text-slate-600">
+          Prediction is based on historical price patterns and is not guaranteed.
+        </p>
+        <p className="text-[10px] text-slate-400 leading-relaxed">
+          Based on historical price patterns. Predicted prices are estimates, not guaranteed future prices.
+          Deal quality classification is statistical, not ML-based.
+        </p>
+      </div>
     </div>
   );
 };
@@ -296,6 +337,10 @@ export const PriceHistoryModal = ({ isOpen, onClose, product }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [hoveredPoint, setHoveredPoint] = useState(null);
+
+  const [prediction, setPrediction] = useState(null);
+  const [predictionLoading, setPredictionLoading] = useState(true);
+  const [predictionError, setPredictionError] = useState(false);
 
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -314,8 +359,8 @@ export const PriceHistoryModal = ({ isOpen, onClose, product }) => {
       setLoading(true);
       setError(null);
       try {
-        const productId = product.id || Math.abs((product.productName || 'prod').hashCode() % 500) || 1;
-        const res = await getProductPriceHistory(productId, period);
+        const prodId = product.id || Math.abs((product.productName || 'prod').hashCode() % 500) || 1;
+        const res = await getProductPriceHistory(prodId, period);
         setData(res);
       } catch (err) {
         console.error('Failed to load price history:', err);
@@ -328,15 +373,39 @@ export const PriceHistoryModal = ({ isOpen, onClose, product }) => {
     fetchHistory();
   }, [isOpen, product, period]);
 
+  useEffect(() => {
+    if (!isOpen || !product) return;
+    const prodId = product.id || Math.abs((product.productName || 'prod').hashCode() % 500) || 1;
+    setPredictionLoading(true);
+    setPredictionError(false);
+    getProductPrediction(prodId)
+      .then((pred) => setPrediction(pred))
+      .catch((err) => {
+        console.error('Failed to load prediction:', err);
+        setPredictionError(true);
+      })
+      .finally(() => setPredictionLoading(false));
+  }, [isOpen, product]);
+
   if (!isOpen || !product) return null;
 
   // Derive numeric product ID for prediction
   const productId = product.id || Math.abs((product.productName || 'prod').hashCode() % 500) || 1;
 
+  // Prediction value for chart projection
+  const predVal = (prediction?.status === 'SUCCESS' && (prediction.predictedPrice7Days != null || prediction.predictedPrice7d != null || prediction.predicted_price_7d != null))
+    ? Number(prediction.predictedPrice7Days ?? prediction.predictedPrice7d ?? prediction.predicted_price_7d)
+    : null;
+  const hasValidPred = predVal !== null && !isNaN(predVal) && predVal > 0;
+
   // Chart coordinate calculations
   const pricePoints = data?.pricePoints || [];
-  const minPrice = data?.lowestPrice ? Number(data.lowestPrice) : 1000;
-  const maxPrice = data?.highestPrice ? Number(data.highestPrice) : 2000;
+  let minPrice = data?.lowestPrice ? Number(data.lowestPrice) : 1000;
+  let maxPrice = data?.highestPrice ? Number(data.highestPrice) : 2000;
+  if (hasValidPred) {
+    minPrice = Math.min(minPrice, predVal);
+    maxPrice = Math.max(maxPrice, predVal);
+  }
   const priceRange = Math.max(1, maxPrice - minPrice);
   const avgPrice = data?.averagePrice ? Number(data.averagePrice) : (minPrice + maxPrice) / 2;
 
@@ -345,11 +414,24 @@ export const PriceHistoryModal = ({ isOpen, onClose, product }) => {
   const paddingX = 40;
   const paddingY = 25;
 
+  // If we have a future predicted point, give historical points space to leave room for the +7d forecast point
+  const histEndX = hasValidPred && pricePoints.length > 0 ? chartWidth - paddingX - 60 : chartWidth - paddingX;
+
   const points = pricePoints.map((p, index) => {
-    const x = paddingX + (index / Math.max(1, pricePoints.length - 1)) * (chartWidth - paddingX * 2);
+    const x = paddingX + (index / Math.max(1, pricePoints.length - 1)) * (histEndX - paddingX);
     const y = chartHeight - paddingY - ((Number(p.price) - minPrice) / priceRange) * (chartHeight - paddingY * 2);
     return { ...p, x, y };
   });
+
+  const lastActualPoint = points.length > 0 ? points[points.length - 1] : null;
+  const predPoint = hasValidPred && lastActualPoint ? {
+    x: chartWidth - paddingX,
+    y: chartHeight - paddingY - ((predVal - minPrice) / priceRange) * (chartHeight - paddingY * 2),
+    price: predVal,
+    date: '+7d Forecast',
+    merchant: `ML Forecast (${prediction.model || prediction.modelVersion || 'Random Forest'})`,
+    isPredicted: true,
+  } : null;
 
   const svgPath = points.length > 0
     ? points.reduce((acc, pt, idx) => (idx === 0 ? `M ${pt.x} ${pt.y}` : `${acc} L ${pt.x} ${pt.y}`), '')
@@ -412,14 +494,46 @@ export const PriceHistoryModal = ({ isOpen, onClose, product }) => {
           ))}
         </div>
 
-        {/* Loading / Error States */}
+        {/* Loading / Error / Empty / Content States */}
         {loading ? (
-          <div className="h-64 flex items-center justify-center">
-            <div className="animate-spin w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full"></div>
+          <div className="space-y-4 animate-pulse" data-testid="price-history-skeleton">
+            {/* Metric summary skeleton */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3">
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} className="bg-slate-100 p-3 rounded-2xl space-y-2 border border-slate-200/80">
+                  <div className="h-2.5 w-16 bg-slate-200 rounded"></div>
+                  <div className="h-5 w-24 bg-slate-300 rounded"></div>
+                </div>
+              ))}
+            </div>
+            {/* Chart canvas skeleton */}
+            <div className="bg-slate-900 rounded-2xl h-44 p-4 flex flex-col justify-between border border-slate-800">
+              <div className="h-2.5 w-28 bg-slate-800 rounded"></div>
+              <div className="h-20 w-full bg-slate-800/60 rounded-xl"></div>
+              <div className="flex justify-between">
+                <div className="h-2 w-12 bg-slate-800 rounded"></div>
+                <div className="h-2 w-16 bg-slate-800 rounded"></div>
+                <div className="h-2 w-12 bg-slate-800 rounded"></div>
+              </div>
+            </div>
           </div>
         ) : error ? (
           <div className="p-4 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-xl">
             {error}
+          </div>
+        ) : (!data?.pricePoints || data.pricePoints.length === 0) ? (
+          <div className="p-8 text-center bg-slate-50 rounded-2xl border border-slate-200 space-y-3" data-testid="empty-price-history">
+            <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center mx-auto text-xl shadow-xs">
+              📊
+            </div>
+            <div className="space-y-1">
+              <h3 className="text-base font-bold text-slate-800">
+                Price history is not available yet.
+              </h3>
+              <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                Historical price movement will be plotted here as live store feeds record periodic changes.
+              </p>
+            </div>
           </div>
         ) : (
           <>
@@ -468,28 +582,28 @@ export const PriceHistoryModal = ({ isOpen, onClose, product }) => {
               )}
             </div>
 
-            {/* Metrics Overview Cards */}
+            {/* Metrics Overview Cards: Current Price, Average Price, Lowest Price, Highest Price */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3">
               <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100 text-center sm:text-left">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Current</span>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Current Price</span>
                 <span className="text-sm sm:text-base font-black text-slate-900 font-mono mt-0.5 block">
                   ₹{Number(data?.currentPrice || 0).toLocaleString('en-IN')}
                 </span>
               </div>
               <div className="bg-emerald-50/70 p-3 rounded-2xl border border-emerald-100 text-center sm:text-left">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 block">Lowest</span>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 block">Lowest Price</span>
                 <span className="text-sm sm:text-base font-black text-emerald-900 font-mono mt-0.5 block">
                   ₹{Number(data?.lowestPrice || 0).toLocaleString('en-IN')}
                 </span>
               </div>
               <div className="bg-rose-50/70 p-3 rounded-2xl border border-rose-100 text-center sm:text-left">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-rose-700 block">Highest</span>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-rose-700 block">Highest Price</span>
                 <span className="text-sm sm:text-base font-black text-rose-900 font-mono mt-0.5 block">
                   ₹{Number(data?.highestPrice || 0).toLocaleString('en-IN')}
                 </span>
               </div>
               <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100 text-center sm:text-left">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Average</span>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Average Price</span>
                 <span className="text-sm sm:text-base font-black text-slate-900 font-mono mt-0.5 block">
                   ₹{Number(data?.averagePrice || 0).toLocaleString('en-IN')}
                 </span>
@@ -498,18 +612,50 @@ export const PriceHistoryModal = ({ isOpen, onClose, product }) => {
 
             {/* Price Chart SVG Canvas */}
             <div className="bg-slate-950 rounded-2xl p-3 sm:p-4 relative overflow-hidden border border-slate-800">
-              {/* Tooltip on hover */}
+              {/* Legend: ACTUAL (Historical) vs PREDICTED (7-Day ML Forecast) */}
+              <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] mb-2 px-1">
+                <div className="flex items-center gap-4">
+                  <span className="flex items-center gap-1.5 text-slate-300 font-medium">
+                    <span className="inline-block w-2.5 h-2.5 rounded-full bg-indigo-500 border border-indigo-400" />
+                    ACTUAL (Historical)
+                  </span>
+                  {hasValidPred && (
+                    <span className="flex items-center gap-1.5 text-purple-300 font-medium">
+                      <span className="inline-block w-2.5 h-2.5 rotate-45 bg-purple-500 border border-purple-300" />
+                      PREDICTED (7-Day ML Forecast)
+                    </span>
+                  )}
+                </div>
+                {hasValidPred && (
+                  <span className="text-[10px] text-purple-300 font-mono font-semibold">
+                    7d Est: ₹{Number(predVal).toLocaleString('en-IN')}
+                  </span>
+                )}
+              </div>
+
+              {/* Tooltip on hover with Date, Price, Provider */}
               {hoveredPoint && (
                 <div
-                  className="absolute z-20 bg-white text-slate-900 px-2.5 py-1 rounded-lg text-[11px] font-mono font-bold shadow-xl border border-slate-200 pointer-events-none -translate-x-1/2 -translate-y-full mb-2"
+                  className="absolute z-20 bg-white text-slate-900 px-3 py-1.5 rounded-xl text-[11px] font-mono font-bold shadow-xl border border-slate-200 pointer-events-none -translate-x-1/2 -translate-y-full mb-2 whitespace-nowrap"
                   style={{ left: `${(hoveredPoint.x / chartWidth) * 100}%`, top: `${(hoveredPoint.y / chartHeight) * 100}%` }}
                 >
-                  <div>₹{Number(hoveredPoint.price).toLocaleString('en-IN')}</div>
-                  <div className="text-[9px] text-slate-400 font-sans">{hoveredPoint.merchant} • {hoveredPoint.date}</div>
+                  <div className={hoveredPoint.isPredicted ? 'text-purple-600 font-black' : 'text-indigo-600 font-black'}>
+                    {hoveredPoint.isPredicted ? '🔮 PREDICTED: ' : ''}₹{Number(hoveredPoint.price).toLocaleString('en-IN')}
+                  </div>
+                  <div className="text-[10px] text-slate-600 font-sans font-medium flex items-center gap-1.5 mt-0.5">
+                    <span>{hoveredPoint.isPredicted ? 'Type' : 'Provider'}: <strong className="text-slate-900">{hoveredPoint.merchant || 'Store'}</strong></span>
+                    <span>•</span>
+                    <span>Date: {hoveredPoint.date}</span>
+                  </div>
                 </div>
               )}
 
-              <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} className="w-full h-36 sm:h-44 overflow-visible">
+              <svg
+                role="img"
+                aria-label="Price history trend chart"
+                viewBox={`0 0 ${chartWidth} ${chartHeight}`}
+                className="w-full h-36 sm:h-44 overflow-visible"
+              >
                 <defs>
                   <linearGradient id="chartGradient" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="0%" stopColor="#6366f1" stopOpacity="0.4" />
@@ -531,7 +677,7 @@ export const PriceHistoryModal = ({ isOpen, onClose, product }) => {
                 {/* Shaded Area */}
                 {svgAreaPath && <path d={svgAreaPath} fill="url(#chartGradient)" />}
 
-                {/* Main Trend Line */}
+                {/* Main Trend Line (ACTUAL - Solid) */}
                 <path
                   d={svgPath}
                   fill="none"
@@ -540,6 +686,20 @@ export const PriceHistoryModal = ({ isOpen, onClose, product }) => {
                   strokeLinecap="round"
                   strokeLinejoin="round"
                 />
+
+                {/* Projected Trend Line (PREDICTED - Dashed) */}
+                {predPoint && lastActualPoint && (
+                  <line
+                    x1={lastActualPoint.x}
+                    y1={lastActualPoint.y}
+                    x2={predPoint.x}
+                    y2={predPoint.y}
+                    stroke="#c084fc"
+                    strokeWidth="2.5"
+                    strokeDasharray="6 4"
+                    strokeLinecap="round"
+                  />
+                )}
 
                 {/* Data Points */}
                 {points.map((pt, i) => (
@@ -556,6 +716,33 @@ export const PriceHistoryModal = ({ isOpen, onClose, product }) => {
                     onMouseLeave={() => setHoveredPoint(null)}
                   />
                 ))}
+
+                {/* Predicted Point (Diamond Marker) */}
+                {predPoint && (
+                  <g
+                    className="cursor-pointer"
+                    onMouseEnter={() => setHoveredPoint(predPoint)}
+                    onMouseLeave={() => setHoveredPoint(null)}
+                  >
+                    <polygon
+                      points={`${predPoint.x},${predPoint.y - 7} ${predPoint.x + 7},${predPoint.y} ${predPoint.x},${predPoint.y + 7} ${predPoint.x - 7},${predPoint.y}`}
+                      fill={hoveredPoint === predPoint ? '#ffffff' : '#a855f7'}
+                      stroke="#e9d5ff"
+                      strokeWidth="2"
+                      className="transition-all duration-150 drop-shadow-sm"
+                    />
+                    <text
+                      x={predPoint.x}
+                      y={predPoint.y - 10}
+                      textAnchor="middle"
+                      fontSize="9"
+                      fontWeight="bold"
+                      fill="#c084fc"
+                    >
+                      +7d
+                    </text>
+                  </g>
+                )}
               </svg>
 
               {/* Chart Date Range Labels */}
@@ -563,11 +750,17 @@ export const PriceHistoryModal = ({ isOpen, onClose, product }) => {
                 <span>{points[0]?.date || 'Start'}</span>
                 <span className="text-slate-500">Average: ₹{Number(data.averagePrice || 0).toLocaleString('en-IN')}</span>
                 <span>{points[points.length - 1]?.date || 'Today'}</span>
+                {predPoint && <span className="text-purple-400">+7d Forecast</span>}
               </div>
             </div>
 
             {/* ── ML Price Prediction Section ─────────────────────────────── */}
-            <MLPredictionSection productId={productId} />
+            <MLPredictionSection
+              productId={productId}
+              prediction={prediction}
+              loading={predictionLoading}
+              fetchError={predictionError}
+            />
 
           </>
         )}

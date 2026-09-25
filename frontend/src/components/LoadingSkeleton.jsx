@@ -1,7 +1,13 @@
-import React from 'react';
+import FlightCardSkeleton from './FlightCardSkeleton';
+import RideCardSkeleton from './RideCardSkeleton';
+import DashboardSkeleton from './dashboard/DashboardSkeleton';
 
 export const LoadingSkeleton = ({ type = 'product-card', count = 3 }) => {
   const items = Array.from({ length: count }, (_, i) => i);
+
+  if (type === 'dashboard') {
+    return <DashboardSkeleton />;
+  }
 
   if (type === 'product-card') {
     return (
@@ -23,52 +29,11 @@ export const LoadingSkeleton = ({ type = 'product-card', count = 3 }) => {
   }
 
   if (type === 'flight-card') {
-    return (
-      <div className="space-y-4">
-        {items.map((i) => (
-          <div key={i} className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs animate-pulse flex flex-col md:flex-row justify-between gap-6 items-center">
-            <div className="flex items-center gap-4 w-full md:w-1/4">
-              <div className="w-12 h-12 bg-slate-200 rounded-xl"></div>
-              <div className="space-y-2 flex-1">
-                <div className="h-4 bg-slate-200 rounded w-3/4"></div>
-                <div className="h-3 bg-slate-200 rounded w-1/2"></div>
-              </div>
-            </div>
-            <div className="flex items-center justify-center gap-6 w-full md:w-1/2">
-              <div className="h-6 bg-slate-200 rounded w-16"></div>
-              <div className="h-2 bg-slate-200 rounded w-24"></div>
-              <div className="h-6 bg-slate-200 rounded w-16"></div>
-            </div>
-            <div className="flex md:flex-col items-center md:items-end justify-between w-full md:w-1/4 gap-3">
-              <div className="h-6 bg-slate-200 rounded w-24"></div>
-              <div className="h-9 bg-slate-200 rounded w-28"></div>
-            </div>
-          </div>
-        ))}
-      </div>
-    );
+    return <FlightCardSkeleton count={count} />;
   }
 
   if (type === 'ride-card') {
-    return (
-      <div className="space-y-3">
-        {items.map((i) => (
-          <div key={i} className="bg-white rounded-xl border border-slate-200 p-4 shadow-xs animate-pulse flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-slate-200 rounded-lg"></div>
-              <div className="space-y-1.5">
-                <div className="h-4 bg-slate-200 rounded w-24"></div>
-                <div className="h-3 bg-slate-200 rounded w-32"></div>
-              </div>
-            </div>
-            <div className="flex items-center gap-4">
-              <div className="h-5 bg-slate-200 rounded w-16"></div>
-              <div className="h-8 bg-slate-200 rounded w-20"></div>
-            </div>
-          </div>
-        ))}
-      </div>
-    );
+    return <RideCardSkeleton count={count} />;
   }
 
   return (

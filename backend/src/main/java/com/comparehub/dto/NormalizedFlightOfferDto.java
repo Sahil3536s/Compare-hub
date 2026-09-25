@@ -26,6 +26,9 @@ public class NormalizedFlightOfferDto {
     @Builder.Default
     private String currency = "INR";
     private String bookingUrl;
+    private String cabinBaggage; // e.g. "7 kg Cabin"
+    private String checkInBaggage; // e.g. "15 kg Check-in"
+    private String airlineLogo; // e.g. "IndiGo" or SVG/URL
 
     // Badges calculated by FlightRankingService
     @Builder.Default

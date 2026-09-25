@@ -6,8 +6,18 @@ export const getSavedProducts = async () => {
   return response.data; // [{ id, userId, productId, productName, productCategory, productImageUrl, createdAt }]
 };
 
-export const saveProduct = async (productId) => {
-  const response = await apiClient.post('/saved/products', { productId: Number(productId) });
+export const saveProduct = async (param) => {
+  let payload = {};
+  if (typeof param === 'object' && param !== null) {
+    payload = {
+      productId: Number(param.productId || param.id),
+      savedPrice: param.savedPrice != null ? Number(param.savedPrice) : (param.price ? Number(param.price) : undefined),
+      savedMerchant: param.savedMerchant || param.merchant || undefined,
+    };
+  } else {
+    payload = { productId: Number(param) };
+  }
+  const response = await apiClient.post('/saved/products', payload);
   return response.data;
 };
 
