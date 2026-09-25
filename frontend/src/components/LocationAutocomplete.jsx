@@ -275,8 +275,9 @@ export const LocationAutocomplete = ({
           )}
 
           {!loading && !searchError && hasSearched && suggestions.length === 0 && (
-            <div className="p-3.5 text-center text-xs text-slate-500 font-medium">
-              No matching places found for &quot;<span className="font-semibold text-slate-800">{inputValue}</span>&quot;
+            <div data-testid="no-matching-location" className="p-3.5 text-center text-xs text-slate-500 font-medium space-y-0.5">
+              <span className="block font-semibold text-slate-700">No matching location found.</span>
+              <span className="block text-[11px] text-slate-400">No matching places found for &quot;<span className="font-medium text-slate-600">{inputValue}</span>&quot;</span>
             </div>
           )}
 

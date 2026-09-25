@@ -14,6 +14,7 @@ import org.springframework.web.client.RestClient;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import java.util.stream.Collectors;
@@ -25,6 +26,12 @@ public class MapboxLocationProvider implements LocationProvider {
     @Value("${app.location.mapbox.access-token:${MAPBOX_ACCESS_TOKEN:}}")
     private String mapboxAccessToken;
 
+    @Value("${app.location.fallback-enabled:${LOCATION_FALLBACK_MODE:false}}")
+    private boolean fallbackEnabled = false;
+
+    @Value("${app.location.mapbox.country-filter:${LOCATION_COUNTRY_FILTER:in}}")
+    private String countryFilter = "in";
+
     private final RestClient restClient;
     private final ObjectMapper objectMapper;
 
@@ -33,8 +40,27 @@ public class MapboxLocationProvider implements LocationProvider {
     }
 
     public MapboxLocationProvider(RestClient restClient, ObjectMapper objectMapper) {
+        this(restClient, objectMapper, null, false, "in");
+    }
+
+    public MapboxLocationProvider(RestClient restClient, ObjectMapper objectMapper, String mapboxAccessToken, boolean fallbackEnabled, String countryFilter) {
         this.restClient = restClient != null ? restClient : RestClient.create();
         this.objectMapper = objectMapper != null ? objectMapper : new ObjectMapper();
+        this.mapboxAccessToken = mapboxAccessToken;
+        this.fallbackEnabled = fallbackEnabled;
+        this.countryFilter = countryFilter != null ? countryFilter : "in";
+    }
+
+    public void setMapboxAccessToken(String mapboxAccessToken) {
+        this.mapboxAccessToken = mapboxAccessToken;
+    }
+
+    public void setFallbackEnabled(boolean fallbackEnabled) {
+        this.fallbackEnabled = fallbackEnabled;
+    }
+
+    public void setCountryFilter(String countryFilter) {
+        this.countryFilter = countryFilter;
     }
 
     // Built-in geographic catalog covering key transit, academic, and landmark hubs across India
@@ -273,7 +299,9 @@ public class MapboxLocationProvider implements LocationProvider {
     @Override
     public List<PlaceSuggestionDto> getPlaceSuggestions(String query) {
         if (query == null || query.trim().length() < 2) {
-            return KNOWN_HUBS.stream().limit(5).collect(Collectors.toList());
+            return fallbackEnabled
+                    ? KNOWN_HUBS.stream().limit(5).collect(Collectors.toList())
+                    : Collections.emptyList();
         }
 
         String trimmedQuery = query.trim();
@@ -292,37 +320,27 @@ public class MapboxLocationProvider implements LocationProvider {
         }
 
         // 2. Multi-city intelligent keyword matching across known transport, academic & landmark hubs
-        String lowerQuery = trimmedQuery.toLowerCase(Locale.ROOT);
-        List<PlaceSuggestionDto> matched = KNOWN_HUBS.stream()
-                .filter(p -> p.getMainText().toLowerCase(Locale.ROOT).contains(lowerQuery)
-                        || p.getSecondaryText().toLowerCase(Locale.ROOT).contains(lowerQuery)
-                        || p.getFullAddress().toLowerCase(Locale.ROOT).contains(lowerQuery)
-                        || lowerQuery.contains(p.getMainText().toLowerCase(Locale.ROOT)))
-                .collect(Collectors.toList());
+        if (fallbackEnabled) {
+            String lowerQuery = trimmedQuery.toLowerCase(Locale.ROOT);
+            List<PlaceSuggestionDto> matched = KNOWN_HUBS.stream()
+                    .filter(p -> p.getMainText().toLowerCase(Locale.ROOT).contains(lowerQuery)
+                            || p.getSecondaryText().toLowerCase(Locale.ROOT).contains(lowerQuery)
+                            || p.getFullAddress().toLowerCase(Locale.ROOT).contains(lowerQuery)
+                            || lowerQuery.contains(p.getMainText().toLowerCase(Locale.ROOT)))
+                    .collect(Collectors.toList());
 
-        if (!matched.isEmpty()) {
-            return matched;
+            if (!matched.isEmpty()) {
+                return matched;
+            }
         }
 
-        // 3. Dynamic geocoding for arbitrary user addresses/places
-        PlaceSuggestionDto dynamicPlace = deriveDynamicPlace(trimmedQuery);
-        return List.of(dynamicPlace);
+        return Collections.emptyList();
     }
 
     @Override
     public LocationDto geocode(String address) {
         if (address == null || address.trim().isBlank()) {
-            return LocationDto.builder()
-                    .name("Connaught Place")
-                    .formattedAddress("Connaught Place, Central Delhi, New Delhi, Delhi 110001")
-                    .latitude(28.6315)
-                    .longitude(77.2167)
-                    .address("Connaught Place, Central Delhi, New Delhi, Delhi 110001")
-                    .city("New Delhi")
-                    .state("Delhi")
-                    .country("India")
-                    .providerPlaceId("del-cp")
-                    .build();
+            return null;
         }
 
         String trimmed = address.trim();
@@ -340,34 +358,38 @@ public class MapboxLocationProvider implements LocationProvider {
             }
         }
 
-        // 2. Match known hubs (exact / mainText first, then fullAddress)
-        String lower = trimmed.toLowerCase(Locale.ROOT);
-        for (PlaceSuggestionDto hub : KNOWN_HUBS) {
-            String hubMain = hub.getMainText().toLowerCase(Locale.ROOT);
-            if (hubMain.equals(lower) || lower.equals(hubMain)) {
-                return toLocationDto(hub);
+        // 2. Match known hubs if fallback is enabled
+        if (fallbackEnabled) {
+            String lower = trimmed.toLowerCase(Locale.ROOT);
+            for (PlaceSuggestionDto hub : KNOWN_HUBS) {
+                String hubMain = hub.getMainText().toLowerCase(Locale.ROOT);
+                if (hubMain.equals(lower) || lower.equals(hubMain)) {
+                    return toLocationDto(hub);
+                }
             }
-        }
-        for (PlaceSuggestionDto hub : KNOWN_HUBS) {
-            String hubMain = hub.getMainText().toLowerCase(Locale.ROOT);
-            if (hubMain.contains(lower) || lower.contains(hubMain)) {
-                return toLocationDto(hub);
+            for (PlaceSuggestionDto hub : KNOWN_HUBS) {
+                String hubMain = hub.getMainText().toLowerCase(Locale.ROOT);
+                if (hubMain.contains(lower) || lower.contains(hubMain)) {
+                    return toLocationDto(hub);
+                }
             }
-        }
-        for (PlaceSuggestionDto hub : KNOWN_HUBS) {
-            if (hub.getFullAddress().toLowerCase(Locale.ROOT).contains(lower)) {
-                return toLocationDto(hub);
+            for (PlaceSuggestionDto hub : KNOWN_HUBS) {
+                if (hub.getFullAddress().toLowerCase(Locale.ROOT).contains(lower)) {
+                    return toLocationDto(hub);
+                }
             }
         }
 
-        // 3. Fallback dynamic geocoding for arbitrary location
-        return toLocationDto(deriveDynamicPlace(trimmed));
+        return null;
     }
 
     @Override
     public LocationDto reverseGeocode(Double latitude, Double longitude) {
-        double lat = latitude != null ? latitude : 28.6315;
-        double lon = longitude != null ? longitude : 77.2167;
+        if (latitude == null || longitude == null) {
+            throw new IllegalArgumentException("Latitude and longitude are required for reverse geocoding");
+        }
+        double lat = latitude;
+        double lon = longitude;
 
         if (isMapboxTokenValid()) {
             try {
@@ -380,7 +402,7 @@ public class MapboxLocationProvider implements LocationProvider {
                     JsonNode features = root.path("features");
                     if (features.isArray() && !features.isEmpty()) {
                         JsonNode first = features.get(0);
-                        String placeName = first.path("place_name").asText(String.format("Location (%.4f, %.4f)", lat, lon));
+                        String placeName = first.path("place_name").asText(String.format(Locale.US, "Location (%.5f, %.5f)", lat, lon));
                         String name = first.path("text").asText(placeName.split(",")[0]);
                         return LocationDto.builder()
                                 .name(name)
@@ -400,44 +422,53 @@ public class MapboxLocationProvider implements LocationProvider {
             }
         }
 
-        // Proximity match against known hubs
-        PlaceSuggestionDto closest = null;
-        double minDistance = Double.MAX_VALUE;
-        for (PlaceSuggestionDto hub : KNOWN_HUBS) {
-            double d = Math.hypot(hub.getLatitude() - lat, hub.getLongitude() - lon);
-            if (d < minDistance) {
-                minDistance = d;
-                closest = hub;
+        // Proximity match against known hubs if fallback is enabled
+        if (fallbackEnabled) {
+            PlaceSuggestionDto closest = null;
+            double minDistance = Double.MAX_VALUE;
+            for (PlaceSuggestionDto hub : KNOWN_HUBS) {
+                double d = Math.hypot(hub.getLatitude() - lat, hub.getLongitude() - lon);
+                if (d < minDistance) {
+                    minDistance = d;
+                    closest = hub;
+                }
+            }
+
+            if (closest != null && minDistance < 0.05) { // Within ~5km
+                return toLocationDto(closest);
             }
         }
 
-        if (closest != null && minDistance < 0.05) { // Within ~5km
-            return toLocationDto(closest);
-        }
-
-        String readableAddress = String.format(Locale.US, "Location (%.4f, %.4f), India", lat, lon);
+        String readableAddress = String.format(Locale.US, "Location (%.5f, %.5f)", lat, lon);
         return LocationDto.builder()
-                .name("Current Location")
+                .name("Current Coordinates")
                 .formattedAddress(readableAddress)
                 .latitude(lat)
                 .longitude(lon)
                 .address(readableAddress)
-                .city("Detected Area")
-                .state("India")
+                .city("Detected Coordinates")
+                .state("")
                 .country("India")
-                .providerPlaceId("coords-" + Math.abs(readableAddress.hashCode()))
+                .providerPlaceId(String.format(Locale.US, "coords-%.5f-%.5f", lat, lon))
                 .build();
     }
 
     @Override
     public RouteEstimateResponseDto calculateRoute(LocationDto pickup, LocationDto destination) {
-        double pLat = (pickup != null && pickup.getLatitude() != null) ? pickup.getLatitude() : 28.6315;
-        double pLon = (pickup != null && pickup.getLongitude() != null) ? pickup.getLongitude() : 77.2167;
-        double dLat = (destination != null && destination.getLatitude() != null) ? destination.getLatitude() : 28.5562;
-        double dLon = (destination != null && destination.getLongitude() != null) ? destination.getLongitude() : 77.1000;
+        if (pickup == null || pickup.getLatitude() == null || pickup.getLongitude() == null) {
+            throw new IllegalArgumentException("Pickup coordinates are required for route calculation");
+        }
+        if (destination == null || destination.getLatitude() == null || destination.getLongitude() == null) {
+            throw new IllegalArgumentException("Destination coordinates are required for route calculation");
+        }
 
-        String pAddr = (pickup != null && pickup.getFormattedAddress() != null) ? pickup.getFormattedAddress() : "Pickup Location";
-        String dAddr = (destination != null && destination.getFormattedAddress() != null) ? destination.getFormattedAddress() : "Destination Location";
+        double pLat = pickup.getLatitude();
+        double pLon = pickup.getLongitude();
+        double dLat = destination.getLatitude();
+        double dLon = destination.getLongitude();
+
+        String pAddr = pickup.getFormattedAddress() != null ? pickup.getFormattedAddress() : pickup.getName();
+        String dAddr = destination.getFormattedAddress() != null ? destination.getFormattedAddress() : destination.getName();
 
         // 1. Try Mapbox Directions API if token is configured
         if (isMapboxTokenValid()) {
@@ -472,6 +503,7 @@ public class MapboxLocationProvider implements LocationProvider {
                                     .durationMinutes(durationMins)
                                     .pickupAddress(pAddr)
                                     .dropAddress(dAddr)
+                                    .routeSource("MAPBOX")
                                     .polylineCoordinates(polyline)
                                     .build();
                         }
@@ -507,6 +539,7 @@ public class MapboxLocationProvider implements LocationProvider {
                 .durationMinutes(durationMins)
                 .pickupAddress(pAddr)
                 .dropAddress(dAddr)
+                .routeSource("ESTIMATED")
                 .polylineCoordinates(polyline)
                 .build();
     }
@@ -519,9 +552,12 @@ public class MapboxLocationProvider implements LocationProvider {
 
     private List<PlaceSuggestionDto> queryMapboxGeocoding(String query) {
         String encoded = URLEncoder.encode(query, StandardCharsets.UTF_8);
+        String countryParam = (countryFilter != null && !countryFilter.trim().isBlank())
+                ? "&country=" + URLEncoder.encode(countryFilter.trim(), StandardCharsets.UTF_8)
+                : "";
         String url = String.format(Locale.US,
-                "https://api.mapbox.com/geocoding/v5/mapbox.places/%s.json?access_token=%s&autocomplete=true&limit=6&country=in",
-                encoded, mapboxAccessToken);
+                "https://api.mapbox.com/geocoding/v5/mapbox.places/%s.json?access_token=%s&autocomplete=true&limit=6%s",
+                encoded, mapboxAccessToken, countryParam);
 
         String json = restClient.get().uri(url).retrieve().body(String.class);
         if (json == null) return List.of();
@@ -590,73 +626,6 @@ public class MapboxLocationProvider implements LocationProvider {
             }
         }
         return "State";
-    }
-
-    private PlaceSuggestionDto deriveDynamicPlace(String query) {
-        int hash = Math.abs(query.hashCode());
-
-        String city = "City";
-        String state = "State";
-        double baseLat = 23.2599;
-        double baseLon = 77.4126;
-
-        String lower = query.toLowerCase(Locale.ROOT);
-        if (lower.contains("bhopal")) {
-            city = "Bhopal";
-            state = "Madhya Pradesh";
-            baseLat = 23.2599;
-            baseLon = 77.4126;
-        } else if (lower.contains("sehore") || lower.contains("vit")) {
-            city = "Sehore";
-            state = "Madhya Pradesh";
-            baseLat = 23.0775;
-            baseLon = 76.8513;
-        } else if (lower.contains("indore")) {
-            city = "Indore";
-            state = "Madhya Pradesh";
-            baseLat = 22.7196;
-            baseLon = 75.8577;
-        } else if (lower.contains("delhi")) {
-            city = "New Delhi";
-            state = "Delhi";
-            baseLat = 28.6139;
-            baseLon = 77.2090;
-        } else if (lower.contains("mumbai")) {
-            city = "Mumbai";
-            state = "Maharashtra";
-            baseLat = 19.0760;
-            baseLon = 72.8777;
-        } else if (lower.contains("bengaluru") || lower.contains("bangalore")) {
-            city = "Bengaluru";
-            state = "Karnataka";
-            baseLat = 12.9716;
-            baseLon = 77.5946;
-        } else {
-            // General valid coordinates across India [lat: 12-28, lon: 72-88]
-            baseLat = 15.0 + (hash % 13000) / 1000.0;
-            baseLon = 73.0 + ((hash / 10) % 12000) / 1000.0;
-        }
-
-        double lat = baseLat + ((hash % 100) * 0.0003);
-        double lon = baseLon + (((hash / 100) % 100) * 0.0003);
-
-        String cleanTitle = query.trim();
-        String fullAddress = String.format("%s, %s, %s, India", cleanTitle, city, state);
-
-        return PlaceSuggestionDto.builder()
-                .placeId("dyn-" + hash)
-                .mainText(cleanTitle)
-                .secondaryText(String.format("%s, %s, India", city, state))
-                .fullAddress(fullAddress)
-                .latitude(Math.round(lat * 10000.0) / 10000.0)
-                .longitude(Math.round(lon * 10000.0) / 10000.0)
-                .name(cleanTitle)
-                .formattedAddress(fullAddress)
-                .city(city)
-                .state(state)
-                .country("India")
-                .providerPlaceId("dyn-" + hash)
-                .build();
     }
 
     private LocationDto toLocationDto(PlaceSuggestionDto p) {

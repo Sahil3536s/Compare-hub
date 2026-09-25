@@ -6,12 +6,14 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.io.Serializable;
+
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 @JsonIgnoreProperties(ignoreUnknown = true)
-public class AirportResultDto {
+public class AirportResultDto implements Serializable {
 
     private String name;
     private String iataCode;
@@ -20,10 +22,14 @@ public class AirportResultDto {
     private String airportType; // "AIRPORT" or "CITY"
     private Double latitude;
     private Double longitude;
+    private String displayName;
 
     public String getDisplayName() {
-        if (cityName != null && !cityName.isBlank() && iataCode != null && !iataCode.isBlank()) {
-            return cityName + " (" + iataCode + ") - " + name;
+        if (displayName != null && !displayName.isBlank()) {
+            return displayName;
+        }
+        if (iataCode != null && !iataCode.isBlank()) {
+            return iataCode + " — " + name + (cityName != null ? ", " + cityName : "");
         }
         return name;
     }

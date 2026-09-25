@@ -4,73 +4,75 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import FlightsPage from '../pages/FlightsPage';
 import FlightOfferCard from '../components/FlightOfferCard';
 import FlightFilterPanel from '../components/flights/FlightFilterPanel';
-import FlightCardSkeleton from '../components/FlightCardSkeleton';
 import * as flightService from '../services/flightService';
 
 // Mock flightService
 vi.mock('../services/flightService');
 
-describe('Part 4 UI Upgrades: Flights Search, Results, Filters & States', () => {
+describe('Part 4: Flights Comparison Engine', () => {
   const mockOffers = [
     {
       airline: 'IndiGo',
       flightNumber: '6E-5012',
       origin: 'DEL',
       destination: 'BOM',
-      departure: '06:15',
-      arrival: '08:25',
-      durationMinutes: 130,
+      departure: '06:00',
+      arrival: '08:15',
+      durationMinutes: 135,
       stops: 0,
       price: 4999,
       currency: 'INR',
-      provider: 'Domestic Direct',
+      provider: 'Domestic Airlines',
       cabinBaggage: '7 kg Cabin',
       checkInBaggage: '15 kg Check-in',
       isCheapest: true,
       isFastest: true,
       isBest: true,
-      score: 98.5,
-      bookingUrl: 'https://www.goindigo.in',
+      score: 95.0,
+      rankingExplanation: 'Lowest available non-stop fare with high on-time reliability.',
+      breakdown: { baseFare: 4200, taxesAndFees: 799, total: 4999 },
     },
     {
       airline: 'Air India',
       flightNumber: 'AI-865',
       origin: 'DEL',
       destination: 'BOM',
-      departure: '10:00',
-      arrival: '12:15',
-      durationMinutes: 135,
+      departure: '09:00',
+      arrival: '11:10',
+      durationMinutes: 130,
       stops: 0,
-      price: 5890,
+      price: 5200,
       currency: 'INR',
       provider: 'Amadeus GDS',
       cabinBaggage: '7 kg Cabin',
-      checkInBaggage: '15 kg Check-in',
+      checkInBaggage: '25 kg Check-in',
       isCheapest: false,
-      isFastest: false,
+      isFastest: true,
       isBest: false,
-      score: 85.0,
-      bookingUrl: 'https://www.airindia.com',
+      score: 91.0,
+      rankingExplanation: 'Generous 25kg check-in baggage included with shortest duration.',
+      breakdown: { baseFare: 4400, taxesAndFees: 800, total: 5200 },
     },
     {
       airline: 'SpiceJet',
-      flightNumber: 'SG-8169',
+      flightNumber: 'SG-135',
       origin: 'DEL',
       destination: 'BOM',
-      departure: '21:40',
-      arrival: '23:55',
-      durationMinutes: 135,
+      departure: '14:30',
+      arrival: '17:15',
+      durationMinutes: 165,
       stops: 1,
       price: 4750,
       currency: 'INR',
-      provider: 'Domestic Direct',
+      provider: 'Domestic Airlines',
       cabinBaggage: '7 kg Cabin',
       checkInBaggage: '15 kg Check-in',
-      isCheapest: false,
+      isCheapest: true,
       isFastest: false,
       isBest: false,
-      score: 82.0,
-      bookingUrl: 'https://www.spicejet.com',
+      score: 87.5,
+      rankingExplanation: 'Cheapest overall fare via 1 stop.',
+      breakdown: { baseFare: 3950, taxesAndFees: 800, total: 4750 },
     },
   ];
 
@@ -90,6 +92,12 @@ describe('Part 4 UI Upgrades: Flights Search, Results, Filters & States', () => 
   beforeEach(() => {
     vi.clearAllMocks();
   });
+
+  const selectAndSearch = (fromCode = 'DEL', toCode = 'BOM') => {
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(`${fromCode} \\(`, 'i') }));
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(`${toCode} \\(`, 'i') }));
+    fireEvent.click(screen.getByRole('button', { name: /Search Flights/i }));
+  };
 
   // =========================================================================
   // 1. FLIGHT SEARCH UI TESTS
@@ -133,16 +141,20 @@ describe('Part 4 UI Upgrades: Flights Search, Results, Filters & States', () => 
         expect(screen.getByRole('button', { name: /Search Flights/i })).toBeInTheDocument();
       });
 
+      // Populate airports using suggestion chips
+      fireEvent.click(screen.getByRole('button', { name: /DEL \(Delhi\)/i }));
+      fireEvent.click(screen.getByRole('button', { name: /BOM \(Mumbai\)/i }));
+
       const fromInput = screen.getByPlaceholderText(/DEL \(Delhi\)/i);
       const toInput = screen.getByPlaceholderText(/BOM \(Mumbai\)/i);
-      expect(fromInput.value).toBe('DEL');
-      expect(toInput.value).toBe('BOM');
+      expect(fromInput.value).toContain('DEL');
+      expect(toInput.value).toContain('BOM');
 
       const swapBtn = screen.getByLabelText(/Swap origin and destination/i);
       fireEvent.click(swapBtn);
 
-      expect(fromInput.value).toBe('BOM');
-      expect(toInput.value).toBe('DEL');
+      expect(fromInput.value).toContain('BOM');
+      expect(toInput.value).toContain('DEL');
     });
 
     it('validates that origin and destination cannot be identical', async () => {
@@ -153,8 +165,10 @@ describe('Part 4 UI Upgrades: Flights Search, Results, Filters & States', () => 
         expect(screen.getByRole('button', { name: /Search Flights/i })).toBeInTheDocument();
       });
 
-      const toInput = screen.getByPlaceholderText(/BOM \(Mumbai\)/i);
-      fireEvent.change(toInput, { target: { value: 'DEL' } });
+      // Select DEL for both
+      const delChip = screen.getByRole('button', { name: /DEL \(Delhi\)/i });
+      fireEvent.click(delChip);
+      fireEvent.click(delChip);
 
       const searchBtn = screen.getByRole('button', { name: /Search Flights/i });
       fireEvent.click(searchBtn);
@@ -173,6 +187,9 @@ describe('Part 4 UI Upgrades: Flights Search, Results, Filters & States', () => 
       await waitFor(() => {
         expect(screen.getByRole('button', { name: /Search Flights/i })).toBeInTheDocument();
       });
+
+      fireEvent.click(screen.getByRole('button', { name: /DEL \(Delhi\)/i }));
+      fireEvent.click(screen.getByRole('button', { name: /BOM \(Mumbai\)/i }));
 
       const depInput = screen.getByLabelText(/Departure Date/i);
       fireEvent.change(depInput, { target: { value: '2020-01-01' } });
@@ -194,6 +211,9 @@ describe('Part 4 UI Upgrades: Flights Search, Results, Filters & States', () => 
       await waitFor(() => {
         expect(screen.getByRole('button', { name: /Search Flights/i })).toBeInTheDocument();
       });
+
+      fireEvent.click(screen.getByRole('button', { name: /DEL \(Delhi\)/i }));
+      fireEvent.click(screen.getByRole('button', { name: /BOM \(Mumbai\)/i }));
 
       // Switch to round trip
       fireEvent.click(screen.getByRole('button', { name: /Round Trip/i }));
@@ -222,6 +242,8 @@ describe('Part 4 UI Upgrades: Flights Search, Results, Filters & States', () => 
       flightService.searchFlights.mockReturnValue(new Promise(() => {})); // pending promise
       render(<FlightsPage />);
 
+      selectAndSearch('DEL', 'BOM');
+
       expect(
         screen.getByText(/Finding the best fares from/i)
       ).toBeInTheDocument();
@@ -238,7 +260,7 @@ describe('Part 4 UI Upgrades: Flights Search, Results, Filters & States', () => 
       expect(screen.getByText('7 kg Cabin')).toBeInTheDocument();
       expect(screen.getByText('15 kg Check-in')).toBeInTheDocument();
       expect(screen.getByText(/4,999/)).toBeInTheDocument();
-      expect(screen.getByText(/Domestic Direct/i)).toBeInTheDocument();
+      expect(screen.getByText(/Domestic Airlines/i)).toBeInTheDocument();
       expect(screen.getByText(/Best Value/i)).toBeInTheDocument();
       expect(screen.getByText(/Cheapest Fare/i)).toBeInTheDocument();
       expect(screen.getByText(/Fastest Flight/i)).toBeInTheDocument();
@@ -247,6 +269,8 @@ describe('Part 4 UI Upgrades: Flights Search, Results, Filters & States', () => 
     it('renders 3 ranking tabs (Cheapest, Fastest, Best Value) and triggers backend sorting', async () => {
       flightService.searchFlights.mockResolvedValue(mockResponse);
       render(<FlightsPage />);
+
+      selectAndSearch('DEL', 'BOM');
 
       await waitFor(() => {
         expect(screen.getByRole('button', { name: /Cheapest Lowest Available Fare/i })).toBeInTheDocument();
@@ -324,6 +348,8 @@ describe('Part 4 UI Upgrades: Flights Search, Results, Filters & States', () => 
       flightService.searchFlights.mockResolvedValue(mockResponse);
       render(<FlightsPage />);
 
+      selectAndSearch('DEL', 'BOM');
+
       await waitFor(() => {
         expect(screen.getByRole('button', { name: /Filter Flights/i })).toBeInTheDocument();
       });
@@ -353,6 +379,8 @@ describe('Part 4 UI Upgrades: Flights Search, Results, Filters & States', () => 
 
       render(<FlightsPage />);
 
+      selectAndSearch('DEL', 'BOM');
+
       await waitFor(() => {
         expect(screen.getByRole('status')).toHaveTextContent(
           /Partial Provider Availability/i
@@ -372,8 +400,10 @@ describe('Part 4 UI Upgrades: Flights Search, Results, Filters & States', () => 
 
       render(<FlightsPage />);
 
+      selectAndSearch('DEL', 'BOM');
+
       await waitFor(() => {
-        expect(screen.getByText(/No flights found for this route/i)).toBeInTheDocument();
+        expect(screen.getByText(/No flight offers were returned for this route and date/i)).toBeInTheDocument();
         expect(screen.getByRole('button', { name: /Reset Search Filters/i })).toBeInTheDocument();
       });
     });
@@ -382,6 +412,8 @@ describe('Part 4 UI Upgrades: Flights Search, Results, Filters & States', () => 
       flightService.searchFlights.mockRejectedValue(new Error('Connection timeout to flight gateway'));
 
       render(<FlightsPage />);
+
+      selectAndSearch('DEL', 'BOM');
 
       await waitFor(() => {
         expect(screen.getByText(/Flight Comparison Engine Notice/i)).toBeInTheDocument();

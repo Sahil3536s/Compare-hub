@@ -20,17 +20,21 @@ public class AirportSearchController {
 
     @GetMapping("/search")
     public ResponseEntity<List<AirportResultDto>> searchAirports(
-            @RequestParam(value = "q", defaultValue = "") String query) {
+            @RequestParam(value = "q", required = false) String q,
+            @RequestParam(value = "query", required = false) String query) {
 
-        List<AirportResultDto> results = airportSearchService.searchAirports(query);
+        String searchTerm = (q != null && !q.isBlank()) ? q : (query != null ? query : "");
+        List<AirportResultDto> results = airportSearchService.searchAirports(searchTerm);
         return ResponseEntity.ok(results);
     }
 
     @GetMapping("/suggest")
     public ResponseEntity<List<AirportResultDto>> suggestAirports(
-            @RequestParam(value = "q", defaultValue = "") String query) {
+            @RequestParam(value = "q", required = false) String q,
+            @RequestParam(value = "query", required = false) String query) {
 
-        List<AirportResultDto> results = airportSearchService.searchAirports(query);
+        String searchTerm = (q != null && !q.isBlank()) ? q : (query != null ? query : "");
+        List<AirportResultDto> results = airportSearchService.searchAirports(searchTerm);
         return ResponseEntity.ok(results);
     }
 }

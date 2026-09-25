@@ -5,162 +5,363 @@ import com.comparehub.dto.PlaceSuggestionDto;
 import com.comparehub.dto.RouteEstimateResponseDto;
 import com.comparehub.provider.impl.MapboxLocationProvider;
 import com.comparehub.service.impl.LocationServiceImpl;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
 
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.*;
 
 class LocationServiceTest {
 
-    private final LocationService locationService = new LocationServiceImpl(new MapboxLocationProvider());
+    private RestClient restClient;
+    private RestClient.RequestHeadersUriSpec uriSpec;
+    private RestClient.ResponseSpec responseSpec;
+    private ObjectMapper objectMapper;
 
-    @Test
-    void shouldReturnPlaceSuggestions() {
-        List<PlaceSuggestionDto> suggestions = locationService.suggestPlaces("Connaught");
+    private MapboxLocationProvider mockProvider;
+    private LocationService mockLocationService;
 
-        assertNotNull(suggestions);
-        assertFalse(suggestions.isEmpty());
-        assertTrue(suggestions.get(0).getMainText().contains("Connaught Place"));
+    private MapboxLocationProvider fallbackProvider;
+    private LocationService fallbackLocationService;
+
+    private MapboxLocationProvider strictNoTokenProvider;
+    private LocationService strictNoTokenLocationService;
+
+    @BeforeEach
+    @SuppressWarnings("unchecked")
+    void setUp() {
+        restClient = mock(RestClient.class);
+        uriSpec = mock(RestClient.RequestHeadersUriSpec.class);
+        responseSpec = mock(RestClient.ResponseSpec.class);
+        objectMapper = new ObjectMapper();
+
+        when(restClient.get()).thenReturn(uriSpec);
+        when(uriSpec.uri(anyString())).thenReturn(uriSpec);
+        when(uriSpec.retrieve()).thenReturn(responseSpec);
+
+        mockProvider = new MapboxLocationProvider(restClient, objectMapper, "pk.test-token-12345", false, "in");
+        mockLocationService = new LocationServiceImpl(mockProvider);
+
+        fallbackProvider = new MapboxLocationProvider(null, objectMapper, null, true, "in");
+        fallbackLocationService = new LocationServiceImpl(fallbackProvider);
+
+        strictNoTokenProvider = new MapboxLocationProvider(null, objectMapper, null, false, "in");
+        strictNoTokenLocationService = new LocationServiceImpl(strictNoTokenProvider);
     }
 
-    @Test
-    void shouldGeocodeKnownAddress() {
-        LocationDto location = locationService.geocodeAddress("Connaught Place");
-
-        assertNotNull(location);
-        assertEquals(28.6315, location.getLatitude(), 0.01);
-        assertEquals(77.2167, location.getLongitude(), 0.01);
-    }
+    // ──────────────────────────────────────────────────────────────────────────
+    // 1. Five Core Real Routes (Geocoding & Route Calculation)
+    // ──────────────────────────────────────────────────────────────────────────
 
     @Test
-    void shouldCalculateRouteEstimate() {
-        LocationDto pickup = LocationDto.builder().latitude(28.6315).longitude(77.2167).address("Connaught Place").build();
-        LocationDto drop = LocationDto.builder().latitude(28.5562).longitude(77.1000).address("IGI Airport").build();
+    void shouldCalculateRouteForVitBhopalToBhopalAirport() {
+        String vitJson = """
+                {"features": [{"id": "place.vit", "text": "VIT Bhopal University", "place_name": "VIT Bhopal University, Sehore, Madhya Pradesh, India", "center": [76.8513, 23.0775], "context": [{"id": "place.sehore", "text": "Sehore"}, {"id": "region.mp", "text": "Madhya Pradesh"}]}]}
+                """;
+        String bhoJson = """
+                {"features": [{"id": "place.bho", "text": "Bhopal Airport", "place_name": "Raja Bhoj Airport, Bhopal, Madhya Pradesh, India", "center": [77.3378, 23.2875], "context": [{"id": "place.bhopal", "text": "Bhopal"}, {"id": "region.mp", "text": "Madhya Pradesh"}]}]}
+                """;
+        String directionsJson = """
+                {"routes": [{"distance": 68400.0, "duration": 4800.0, "geometry": {"coordinates": [[76.8513, 23.0775], [77.1000, 23.1800], [77.3378, 23.2875]]}}]}
+                """;
 
-        RouteEstimateResponseDto estimate = locationService.calculateRoute(pickup, drop);
+        when(responseSpec.body(String.class)).thenReturn(vitJson, bhoJson, directionsJson);
 
-        assertNotNull(estimate);
-        assertTrue(estimate.getDistanceKm() > 5.0);
-        assertTrue(estimate.getDurationMinutes() > 10);
-        assertFalse(estimate.getPolylineCoordinates().isEmpty());
-    }
-
-    @Test
-    void shouldSuggestVitBhopalOnPartialInput() {
-        List<PlaceSuggestionDto> suggestions = locationService.suggestPlaces("VIT B");
-        assertNotNull(suggestions);
-        assertFalse(suggestions.isEmpty());
-        assertTrue(suggestions.stream().anyMatch(s -> s.getMainText().toLowerCase().contains("vit bhopal")));
-
-        PlaceSuggestionDto vit = suggestions.stream()
-                .filter(s -> s.getMainText().toLowerCase().contains("vit bhopal"))
-                .findFirst().orElseThrow();
-        assertEquals(23.0775, vit.getLatitude(), 0.05);
-        assertEquals(76.8513, vit.getLongitude(), 0.05);
-        assertNotNull(vit.getFormattedAddress());
-        assertNotNull(vit.getCity());
-    }
-
-    @Test
-    void shouldSuggestIndoreAirportOnPartialInput() {
-        List<PlaceSuggestionDto> suggestions = locationService.suggestPlaces("Indore Air");
-        assertNotNull(suggestions);
-        assertFalse(suggestions.isEmpty());
-        assertTrue(suggestions.stream().anyMatch(s -> s.getMainText().toLowerCase().contains("indore airport")));
-
-        PlaceSuggestionDto ind = suggestions.stream()
-                .filter(s -> s.getMainText().toLowerCase().contains("indore airport"))
-                .findFirst().orElseThrow();
-        assertEquals(22.7217, ind.getLatitude(), 0.05);
-        assertEquals(75.8011, ind.getLongitude(), 0.05);
-        assertEquals("Indore", ind.getCity());
-    }
-
-    @Test
-    void shouldCalculateRouteForVitBhopalToSehore() {
-        LocationDto pickup = locationService.geocodeAddress("VIT Bhopal University");
-        LocationDto drop = locationService.geocodeAddress("Sehore");
+        LocationDto pickup = mockLocationService.geocodeAddress("VIT Bhopal University");
+        LocationDto drop = mockLocationService.geocodeAddress("Bhopal Airport");
 
         assertNotNull(pickup);
-        assertNotNull(drop);
+        assertEquals(23.0775, pickup.getLatitude(), 0.001);
+        assertEquals(76.8513, pickup.getLongitude(), 0.001);
 
-        RouteEstimateResponseDto route = locationService.calculateRoute(pickup, drop);
+        assertNotNull(drop);
+        assertEquals(23.2875, drop.getLatitude(), 0.001);
+        assertEquals(77.3378, drop.getLongitude(), 0.001);
+
+        RouteEstimateResponseDto route = mockLocationService.calculateRoute(pickup, drop);
         assertNotNull(route);
-        assertTrue(route.getDistanceKm() > 10.0, "Distance from VIT Bhopal to Sehore should be > 10km");
-        assertTrue(route.getDurationMinutes() > 15);
+        assertEquals(68.4, route.getDistanceKm(), 0.1);
+        assertEquals(80, route.getDurationMinutes());
+        assertEquals("MAPBOX", route.getRouteSource());
         assertFalse(route.getPolylineCoordinates().isEmpty());
     }
 
     @Test
-    void shouldCalculateRouteForIndoreAirportToRajwada() {
-        LocationDto pickup = locationService.geocodeAddress("Indore Airport");
-        LocationDto drop = locationService.geocodeAddress("Rajwada Palace");
+    void shouldCalculateRouteForBhopalJunctionToDbMall() {
+        String stnJson = """
+                {"features": [{"id": "place.stn", "text": "Bhopal Junction", "place_name": "Bhopal Railway Station, Bhopal, Madhya Pradesh, India", "center": [77.4126, 23.2599], "context": [{"id": "place.bho", "text": "Bhopal"}, {"id": "region.mp", "text": "Madhya Pradesh"}]}]}
+                """;
+        String mallJson = """
+                {"features": [{"id": "place.mall", "text": "DB City Mall", "place_name": "DB City Mall, Arera Hills, Bhopal, Madhya Pradesh, India", "center": [77.4332, 23.2330], "context": [{"id": "place.bho", "text": "Bhopal"}, {"id": "region.mp", "text": "Madhya Pradesh"}]}]}
+                """;
+        String directionsJson = """
+                {"routes": [{"distance": 5800.0, "duration": 840.0, "geometry": {"coordinates": [[77.4126, 23.2599], [77.4332, 23.2330]]}}]}
+                """;
+
+        when(responseSpec.body(String.class)).thenReturn(stnJson, mallJson, directionsJson);
+
+        LocationDto pickup = mockLocationService.geocodeAddress("Bhopal Junction");
+        LocationDto drop = mockLocationService.geocodeAddress("DB City Mall");
 
         assertNotNull(pickup);
         assertNotNull(drop);
 
-        RouteEstimateResponseDto route = locationService.calculateRoute(pickup, drop);
+        RouteEstimateResponseDto route = mockLocationService.calculateRoute(pickup, drop);
         assertNotNull(route);
-        assertTrue(route.getDistanceKm() > 4.0, "Distance from Indore Airport to Rajwada Palace should be > 4km");
-        assertTrue(route.getDurationMinutes() > 8);
+        assertEquals(5.8, route.getDistanceKm(), 0.1);
+        assertEquals(14, route.getDurationMinutes());
+        assertEquals("MAPBOX", route.getRouteSource());
     }
 
     @Test
-    void shouldCalculateRouteForBhopalStationToAirport() {
-        LocationDto pickup = locationService.geocodeAddress("Bhopal Railway Station");
-        LocationDto drop = locationService.geocodeAddress("Bhopal Airport");
+    void shouldCalculateRouteForIndoreAirportToRajwadaPalace() {
+        String indAirJson = """
+                {"features": [{"id": "place.indair", "text": "Indore Airport", "place_name": "Devi Ahilyabai Holkar Airport, Indore, Madhya Pradesh, India", "center": [75.8011, 22.7217], "context": [{"id": "place.ind", "text": "Indore"}, {"id": "region.mp", "text": "Madhya Pradesh"}]}]}
+                """;
+        String rajwadaJson = """
+                {"features": [{"id": "place.rajwada", "text": "Rajwada Palace", "place_name": "Rajwada Palace, MG Road, Indore, Madhya Pradesh, India", "center": [75.8553, 22.7186], "context": [{"id": "place.ind", "text": "Indore"}, {"id": "region.mp", "text": "Madhya Pradesh"}]}]}
+                """;
+        String directionsJson = """
+                {"routes": [{"distance": 8100.0, "duration": 1200.0, "geometry": {"coordinates": [[75.8011, 22.7217], [75.8553, 22.7186]]}}]}
+                """;
 
-        RouteEstimateResponseDto route = locationService.calculateRoute(pickup, drop);
+        when(responseSpec.body(String.class)).thenReturn(indAirJson, rajwadaJson, directionsJson);
+
+        LocationDto pickup = mockLocationService.geocodeAddress("Indore Airport");
+        LocationDto drop = mockLocationService.geocodeAddress("Rajwada Palace");
+
+        assertNotNull(pickup);
+        assertNotNull(drop);
+
+        RouteEstimateResponseDto route = mockLocationService.calculateRoute(pickup, drop);
         assertNotNull(route);
-        assertTrue(route.getDistanceKm() > 8.0);
-        assertTrue(route.getDurationMinutes() > 12);
+        assertEquals(8.1, route.getDistanceKm(), 0.1);
+        assertEquals(20, route.getDurationMinutes());
+        assertEquals("MAPBOX", route.getRouteSource());
     }
 
     @Test
     void shouldCalculateRouteForNewDelhiStationToIndiaGate() {
-        LocationDto pickup = locationService.geocodeAddress("New Delhi Railway Station");
-        LocationDto drop = locationService.geocodeAddress("India Gate");
+        String ndlsJson = """
+                {"features": [{"id": "place.ndls", "text": "New Delhi Railway Station", "place_name": "New Delhi Railway Station, New Delhi, Delhi, India", "center": [77.2195, 28.6429], "context": [{"id": "place.del", "text": "New Delhi"}, {"id": "region.del", "text": "Delhi"}]}]}
+                """;
+        String indiaGateJson = """
+                {"features": [{"id": "place.ig", "text": "India Gate", "place_name": "India Gate, Kartavya Path, New Delhi, Delhi, India", "center": [77.2295, 28.6129], "context": [{"id": "place.del", "text": "New Delhi"}, {"id": "region.del", "text": "Delhi"}]}]}
+                """;
+        String directionsJson = """
+                {"routes": [{"distance": 4500.0, "duration": 720.0, "geometry": {"coordinates": [[77.2195, 28.6429], [77.2295, 28.6129]]}}]}
+                """;
 
-        RouteEstimateResponseDto route = locationService.calculateRoute(pickup, drop);
+        when(responseSpec.body(String.class)).thenReturn(ndlsJson, indiaGateJson, directionsJson);
+
+        LocationDto pickup = mockLocationService.geocodeAddress("New Delhi Railway Station");
+        LocationDto drop = mockLocationService.geocodeAddress("India Gate");
+
+        assertNotNull(pickup);
+        assertNotNull(drop);
+
+        RouteEstimateResponseDto route = mockLocationService.calculateRoute(pickup, drop);
         assertNotNull(route);
-        assertTrue(route.getDistanceKm() > 2.0);
-        assertTrue(route.getDurationMinutes() > 5);
+        assertEquals(4.5, route.getDistanceKm(), 0.1);
+        assertEquals(12, route.getDurationMinutes());
+        assertEquals("MAPBOX", route.getRouteSource());
     }
 
     @Test
     void shouldCalculateRouteForMumbaiAirportToGatewayOfIndia() {
-        LocationDto pickup = locationService.geocodeAddress("Mumbai Airport");
-        LocationDto drop = locationService.geocodeAddress("Gateway of India");
+        String bomAirJson = """
+                {"features": [{"id": "place.bom", "text": "Mumbai Airport", "place_name": "CSMIA, Mumbai, Maharashtra, India", "center": [72.8656, 19.0896], "context": [{"id": "place.bomc", "text": "Mumbai"}, {"id": "region.mh", "text": "Maharashtra"}]}]}
+                """;
+        String gatewayJson = """
+                {"features": [{"id": "place.gw", "text": "Gateway of India", "place_name": "Gateway of India, Colaba, Mumbai, Maharashtra, India", "center": [72.8347, 18.9220], "context": [{"id": "place.bomc", "text": "Mumbai"}, {"id": "region.mh", "text": "Maharashtra"}]}]}
+                """;
+        String directionsJson = """
+                {"routes": [{"distance": 24200.0, "duration": 2880.0, "geometry": {"coordinates": [[72.8656, 19.0896], [72.8347, 18.9220]]}}]}
+                """;
 
-        RouteEstimateResponseDto route = locationService.calculateRoute(pickup, drop);
+        when(responseSpec.body(String.class)).thenReturn(bomAirJson, gatewayJson, directionsJson);
+
+        LocationDto pickup = mockLocationService.geocodeAddress("Mumbai Airport");
+        LocationDto drop = mockLocationService.geocodeAddress("Gateway of India");
+
+        assertNotNull(pickup);
+        assertNotNull(drop);
+
+        RouteEstimateResponseDto route = mockLocationService.calculateRoute(pickup, drop);
         assertNotNull(route);
-        assertTrue(route.getDistanceKm() > 15.0);
-        assertTrue(route.getDurationMinutes() > 25);
+        assertEquals(24.2, route.getDistanceKm(), 0.1);
+        assertEquals(48, route.getDurationMinutes());
+        assertEquals("MAPBOX", route.getRouteSource());
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // 2. Elimination of Fake Coordinates for Unknown / Nonsense Locations
+    // ──────────────────────────────────────────────────────────────────────────
+
+    @Test
+    void shouldReturnEmptyWhenSearchingUnknownOrNonsenseLocation() {
+        String emptyJson = "{\"features\": []}";
+        when(responseSpec.body(String.class)).thenReturn(emptyJson);
+
+        List<PlaceSuggestionDto> suggestions = mockLocationService.suggestPlaces("zzzzxxxyyyy123");
+
+        assertNotNull(suggestions);
+        assertTrue(suggestions.isEmpty(), "Unknown locations must return empty list, NOT fake coordinates!");
     }
 
     @Test
-    void shouldReturnStructuredLocationDtoWithAllRequiredFields() {
-        LocationDto loc = locationService.geocodeAddress("VIT Bhopal University");
-        assertNotNull(loc.getName());
-        assertNotNull(loc.getFormattedAddress());
-        assertNotNull(loc.getLatitude());
-        assertNotNull(loc.getLongitude());
-        assertNotNull(loc.getCity());
-        assertNotNull(loc.getState());
-        assertNotNull(loc.getCountry());
-        assertNotNull(loc.getProviderPlaceId());
+    void shouldReturnNullWhenGeocodingUnknownOrNonsenseLocation() {
+        String emptyJson = "{\"features\": []}";
+        when(responseSpec.body(String.class)).thenReturn(emptyJson);
+
+        LocationDto location = mockLocationService.geocodeAddress("zzzzxxxyyyy123");
+
+        assertNull(location, "Geocoding unknown locations must return null, NOT fake coordinates!");
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // 3. Rejection of Missing Coordinates in calculateRoute
+    // ──────────────────────────────────────────────────────────────────────────
+
+    @Test
+    void shouldRejectRouteCalculationWhenPickupCoordinatesAreMissing() {
+        LocationDto pickup = LocationDto.builder().name("Missing Coords Pickup").build();
+        LocationDto drop = LocationDto.builder().latitude(28.5562).longitude(77.1000).name("Valid Drop").build();
+
+        assertThrows(IllegalArgumentException.class, () -> mockLocationService.calculateRoute(pickup, drop));
     }
 
     @Test
-    void shouldDynamicallyGeocodeArbitraryLocations() {
-        List<PlaceSuggestionDto> suggestions = locationService.suggestPlaces("Anna Nagar Chennai");
+    void shouldRejectRouteCalculationWhenDestinationCoordinatesAreMissing() {
+        LocationDto pickup = LocationDto.builder().latitude(28.6315).longitude(77.2167).name("Valid Pickup").build();
+        LocationDto drop = LocationDto.builder().name("Missing Coords Drop").build();
+
+        assertThrows(IllegalArgumentException.class, () -> mockLocationService.calculateRoute(pickup, drop));
+    }
+
+    @Test
+    void shouldRejectRouteCalculationWhenEndpointsAreNull() {
+        LocationDto valid = LocationDto.builder().latitude(28.6315).longitude(77.2167).build();
+        assertThrows(IllegalArgumentException.class, () -> mockLocationService.calculateRoute(null, valid));
+        assertThrows(IllegalArgumentException.class, () -> mockLocationService.calculateRoute(valid, null));
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // 4. Route Source & Fallback to Mathematical Routing on Real Coordinates
+    // ──────────────────────────────────────────────────────────────────────────
+
+    @Test
+    void shouldMarkRouteSourceAsEstimatedWhenMapboxDirectionsFails() {
+        when(responseSpec.body(String.class)).thenThrow(new RestClientException("Directions 500 error"));
+
+        LocationDto pickup = LocationDto.builder().latitude(28.6315).longitude(77.2167).name("Connaught Place").build();
+        LocationDto drop = LocationDto.builder().latitude(28.5562).longitude(77.1000).name("IGI Airport").build();
+
+        RouteEstimateResponseDto route = mockLocationService.calculateRoute(pickup, drop);
+
+        assertNotNull(route);
+        assertEquals("ESTIMATED", route.getRouteSource());
+        assertTrue(route.getDistanceKm() > 10.0);
+        assertTrue(route.getDurationMinutes() > 10);
+        assertFalse(route.getPolylineCoordinates().isEmpty());
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // 5. Reverse Geocoding
+    // ──────────────────────────────────────────────────────────────────────────
+
+    @Test
+    void shouldReverseGeocodeSuccessfullyWithRealMapboxResponse() {
+        String revgeoJson = """
+                {"features": [{"id": "place.rev", "text": "Connaught Place", "place_name": "Connaught Place, New Delhi, Delhi, India", "center": [77.2167, 28.6315], "context": [{"id": "place.del", "text": "New Delhi"}, {"id": "region.del", "text": "Delhi"}]}]}
+                """;
+        when(responseSpec.body(String.class)).thenReturn(revgeoJson);
+
+        LocationDto loc = mockLocationService.reverseGeocode(28.6315, 77.2167);
+
+        assertNotNull(loc);
+        assertEquals("Connaught Place", loc.getName());
+        assertEquals("New Delhi", loc.getCity());
+        assertEquals("Delhi", loc.getState());
+        assertEquals(28.6315, loc.getLatitude());
+        assertEquals(77.2167, loc.getLongitude());
+    }
+
+    @Test
+    void shouldReturnCoordinateBasedLocationWhenReverseGeocodingFailsWithoutInventingStreet() {
+        when(responseSpec.body(String.class)).thenThrow(new RestClientException("Mapbox down"));
+
+        LocationDto loc = mockLocationService.reverseGeocode(25.12345, 78.54321);
+
+        assertNotNull(loc);
+        assertEquals("Current Coordinates", loc.getName());
+        assertEquals("Location (25.12345, 78.54321)", loc.getFormattedAddress());
+        assertEquals(25.12345, loc.getLatitude(), 0.0001);
+        assertEquals(78.54321, loc.getLongitude(), 0.0001);
+    }
+
+    @Test
+    void shouldThrowExceptionWhenReverseGeocodeCoordinatesAreNull() {
+        assertThrows(IllegalArgumentException.class, () -> mockLocationService.reverseGeocode(null, 77.0));
+        assertThrows(IllegalArgumentException.class, () -> mockLocationService.reverseGeocode(28.0, null));
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // 6. Network Failure & Missing Token Resilience
+    // ──────────────────────────────────────────────────────────────────────────
+
+    @Test
+    void shouldHandleNetworkTimeoutGracefullyWithoutCrashing() {
+        when(responseSpec.body(String.class)).thenThrow(new RestClientException("Connection timeout"));
+
+        List<PlaceSuggestionDto> suggestions = mockLocationService.suggestPlaces("VIT Bhopal");
+        assertNotNull(suggestions);
+        assertTrue(suggestions.isEmpty());
+
+        LocationDto geocode = mockLocationService.geocodeAddress("VIT Bhopal");
+        assertNull(geocode);
+    }
+
+    @Test
+    void shouldHandleMissingTokenWithoutCrashing() {
+        List<PlaceSuggestionDto> suggestions = strictNoTokenLocationService.suggestPlaces("VIT Bhopal");
+        assertNotNull(suggestions);
+        assertTrue(suggestions.isEmpty(), "With token missing and fallback disabled, must return empty list!");
+
+        LocationDto geocode = strictNoTokenLocationService.geocodeAddress("VIT Bhopal");
+        assertNull(geocode);
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // 7. Strict Fallback Mode Toggle
+    // ──────────────────────────────────────────────────────────────────────────
+
+    @Test
+    void shouldAllowKnownHubsWhenFallbackIsEnabled() {
+        List<PlaceSuggestionDto> suggestions = fallbackLocationService.suggestPlaces("VIT B");
         assertNotNull(suggestions);
         assertFalse(suggestions.isEmpty());
+        assertTrue(suggestions.get(0).getMainText().contains("VIT Bhopal"));
 
-        PlaceSuggestionDto s = suggestions.get(0);
-        assertNotNull(s.getLatitude());
-        assertNotNull(s.getLongitude());
-        assertNotNull(s.getFormattedAddress());
+        LocationDto geocode = fallbackLocationService.geocodeAddress("Connaught Place");
+        assertNotNull(geocode);
+        assertEquals(28.6315, geocode.getLatitude(), 0.01);
+    }
+
+    @Test
+    void shouldDisallowKnownHubsWhenFallbackIsDisabled() {
+        List<PlaceSuggestionDto> suggestions = strictNoTokenLocationService.suggestPlaces("VIT B");
+        assertNotNull(suggestions);
+        assertTrue(suggestions.isEmpty(), "Fallback disabled must not search KNOWN_HUBS");
+
+        LocationDto geocode = strictNoTokenLocationService.geocodeAddress("Connaught Place");
+        assertNull(geocode);
     }
 }
+

@@ -50,6 +50,23 @@ describe('Dynamic Flight Airport/City Search & Integration', () => {
     flightService.searchFlights.mockResolvedValue(mockCompareResponse);
   });
 
+  // Helper to select an airport via autocomplete suggestions
+  const selectAirportViaInput = async (input, query, code, cityName) => {
+    airportService.searchAirports.mockImplementation(async () => [
+      {
+        iataCode: code,
+        name: `${cityName} International Airport`,
+        cityName: cityName,
+        countryName: 'Country',
+        displayName: `${code} — ${cityName} International Airport, ${cityName}`,
+      },
+    ]);
+
+    fireEvent.change(input, { target: { value: query } });
+    const option = await screen.findByRole('option', { name: new RegExp(code, 'i') }, { timeout: 3000 });
+    fireEvent.click(option);
+  };
+
   // =========================================================================
   // 1. REUSABLE AIRPORT AUTOCOMPLETE TESTS
   // =========================================================================
@@ -98,19 +115,17 @@ describe('Dynamic Flight Airport/City Search & Integration', () => {
         expect(airportService.searchAirports).toHaveBeenCalledWith('Del');
       });
 
-      expect(screen.getByText('Indira Gandhi International Airport')).toBeInTheDocument();
-      expect(screen.getByText('DEL')).toBeInTheDocument();
+      const option = await screen.findByRole('option');
+      expect(option).toHaveTextContent(/DEL/i);
+      expect(option).toHaveTextContent(/Delhi/i);
     });
 
-    it('supports search by City Name, Airport Name, and IATA code', async () => {
-      airportService.searchAirports.mockResolvedValue([
-        {
-          name: 'Raja Bhoj Airport',
-          iataCode: 'BHO',
-          cityName: 'Bhopal',
-          countryName: 'India',
-        },
-      ]);
+    it('displays loading spinner while fetching suggestions', async () => {
+      let resolvePromise;
+      const pendingPromise = new Promise((resolve) => {
+        resolvePromise = resolve;
+      });
+      airportService.searchAirports.mockReturnValue(pendingPromise);
 
       render(
         <AirportAutocomplete
@@ -122,34 +137,64 @@ describe('Dynamic Flight Airport/City Search & Integration', () => {
       );
 
       const input = screen.getByRole('combobox');
-      fireEvent.change(input, { target: { value: 'Bho' } });
+      fireEvent.change(input, { target: { value: 'Mumbai' } });
 
       await waitFor(() => {
-        expect(screen.getByText('Raja Bhoj Airport')).toBeInTheDocument();
-        expect(screen.getByText('BHO')).toBeInTheDocument();
+        expect(screen.getByLabelText(/Loading suggestions/i)).toBeInTheDocument();
       });
+
+      resolvePromise([]);
     });
 
-    it('handles multiple airports in the same city (e.g. London: LHR, LGW, STN)', async () => {
+    it('cancels stale pending requests when input changes rapidly', async () => {
+      let resolveFirst;
+      const firstPromise = new Promise((resolve) => {
+        resolveFirst = resolve;
+      });
+
+      airportService.searchAirports
+        .mockReturnValueOnce(firstPromise)
+        .mockResolvedValueOnce([
+          {
+            name: 'Heathrow Airport',
+            iataCode: 'LHR',
+            cityName: 'London',
+            countryName: 'United Kingdom',
+          },
+        ]);
+
+      render(
+        <AirportAutocomplete
+          id="test-airport"
+          value=""
+          onChange={vi.fn()}
+          onSelect={vi.fn()}
+        />
+      );
+
+      const input = screen.getByRole('combobox');
+      fireEvent.change(input, { target: { value: 'Lon' } });
+      fireEvent.change(input, { target: { value: 'London' } });
+
+      // Stale first promise resolves late
+      resolveFirst([
+        {
+          name: 'Old Airport',
+          iataCode: 'OLD',
+          cityName: 'Old City',
+        },
+      ]);
+
+      await waitFor(() => {
+        expect(screen.getByText(/LHR/i)).toBeInTheDocument();
+      });
+      expect(screen.queryByText(/OLD/i)).not.toBeInTheDocument();
+    });
+
+    it('supports full keyboard navigation (ArrowDown, ArrowUp, Enter, Escape)', async () => {
       airportService.searchAirports.mockResolvedValue([
-        {
-          name: 'London Heathrow Airport',
-          iataCode: 'LHR',
-          cityName: 'London',
-          countryName: 'United Kingdom',
-        },
-        {
-          name: 'London Gatwick Airport',
-          iataCode: 'LGW',
-          cityName: 'London',
-          countryName: 'United Kingdom',
-        },
-        {
-          name: 'London Stansted Airport',
-          iataCode: 'STN',
-          cityName: 'London',
-          countryName: 'United Kingdom',
-        },
+        { name: 'Heathrow', iataCode: 'LHR', cityName: 'London' },
+        { name: 'Gatwick', iataCode: 'LGW', cityName: 'London' },
       ]);
 
       const onSelect = vi.fn();
@@ -166,68 +211,25 @@ describe('Dynamic Flight Airport/City Search & Integration', () => {
       fireEvent.change(input, { target: { value: 'London' } });
 
       await waitFor(() => {
-        expect(screen.getByText('LHR')).toBeInTheDocument();
-        expect(screen.getByText('LGW')).toBeInTheDocument();
-        expect(screen.getByText('STN')).toBeInTheDocument();
+        expect(screen.getAllByRole('option')).toHaveLength(2);
       });
 
-      // User selects specific airport Gatwick
-      fireEvent.click(screen.getByText('London Gatwick Airport'));
-      expect(onSelect).toHaveBeenCalledWith(
-        expect.objectContaining({
-          iataCode: 'LGW',
-          cityName: 'London',
-          name: 'London Gatwick Airport',
-        })
-      );
-    });
-
-    it('supports keyboard navigation (ArrowDown, ArrowUp, Enter to select)', async () => {
-      const onSelect = vi.fn();
-      airportService.searchAirports.mockResolvedValue([
-        {
-          name: 'John F. Kennedy International Airport',
-          iataCode: 'JFK',
-          cityName: 'New York',
-          countryName: 'United States',
-        },
-        {
-          name: 'LaGuardia Airport',
-          iataCode: 'LGA',
-          cityName: 'New York',
-          countryName: 'United States',
-        },
-      ]);
-
-      render(
-        <AirportAutocomplete
-          id="test-airport"
-          value=""
-          onChange={vi.fn()}
-          onSelect={onSelect}
-        />
-      );
-
-      const input = screen.getByRole('combobox');
-      fireEvent.change(input, { target: { value: 'New York' } });
-
-      await waitFor(() => {
-        expect(screen.getByText('JFK')).toBeInTheDocument();
-      });
-
-      // Arrow down to highlight first item (JFK), then select with Enter
+      // Press ArrowDown to highlight first
       fireEvent.keyDown(input, { key: 'ArrowDown' });
+      // Press ArrowDown to highlight second
+      fireEvent.keyDown(input, { key: 'ArrowDown' });
+      // Press Enter to select
       fireEvent.keyDown(input, { key: 'Enter' });
 
       expect(onSelect).toHaveBeenCalledWith(
         expect.objectContaining({
-          iataCode: 'JFK',
-          cityName: 'New York',
+          iataCode: 'LGW',
+          name: 'Gatwick',
         })
       );
     });
 
-    it('displays "No matching airports or cities found for ..." on empty results', async () => {
+    it('displays "No matching airports or cities found" when search yields 0 results', async () => {
       airportService.searchAirports.mockResolvedValue([]);
 
       render(
@@ -240,7 +242,7 @@ describe('Dynamic Flight Airport/City Search & Integration', () => {
       );
 
       const input = screen.getByRole('combobox');
-      fireEvent.change(input, { target: { value: 'NonexistentPlace123' } });
+      fireEvent.change(input, { target: { value: 'NonexistentPlace' } });
 
       await waitFor(() => {
         expect(
@@ -270,15 +272,40 @@ describe('Dynamic Flight Airport/City Search & Integration', () => {
   // 2. FLIGHT SEARCH ROUTE PAIRS & VALIDATION
   // =========================================================================
   describe('Dynamic Route Pairs & Validation', () => {
+    it('initializes in IDLE state without executing auto-search on mount', async () => {
+      render(<FlightsPage />);
+
+      expect(screen.getByText('Compare Flight Fares')).toBeInTheDocument();
+      expect(
+        screen.getByText(/Select your departure and arrival airports above/i)
+      ).toBeInTheDocument();
+      expect(flightService.searchFlights).not.toHaveBeenCalled();
+    });
+
+    it('requires valid selected airport and rejects arbitrary unselected text like ABC', async () => {
+      render(<FlightsPage />);
+
+      const fromInput = screen.getByPlaceholderText(/DEL \(Delhi\)/i);
+      fireEvent.change(fromInput, { target: { value: 'ABC' } });
+
+      const searchBtn = screen.getByRole('button', { name: /Search Flights/i });
+      fireEvent.click(searchBtn);
+
+      await waitFor(() => {
+        expect(screen.getByRole('alert')).toHaveTextContent(
+          /Please select a valid origin airport from the suggestions/i
+        );
+      });
+      expect(flightService.searchFlights).not.toHaveBeenCalled();
+    });
+
     it('validates that origin and destination cannot be identical', async () => {
       render(<FlightsPage />);
 
-      await waitFor(() => {
-        expect(screen.getByRole('button', { name: /Search Flights/i })).toBeInTheDocument();
-      });
-
-      const toInput = screen.getByPlaceholderText(/BOM \(Mumbai\)/i);
-      fireEvent.change(toInput, { target: { value: 'DEL' } });
+      // Use popular hub suggestion chips to select DEL for both origin and destination
+      const delChip = screen.getByRole('button', { name: /DEL \(Delhi\)/i });
+      fireEvent.click(delChip); // Sets fromAirport to DEL
+      fireEvent.click(delChip); // Sets toAirport to DEL
 
       const searchBtn = screen.getByRole('button', { name: /Search Flights/i });
       fireEvent.click(searchBtn);
@@ -293,15 +320,11 @@ describe('Dynamic Flight Airport/City Search & Integration', () => {
     it('executes search for prompt route: Indore (IDR) -> Bangalore (BLR)', async () => {
       render(<FlightsPage />);
 
-      await waitFor(() => {
-        expect(screen.getByRole('button', { name: /Search Flights/i })).toBeInTheDocument();
-      });
-
       const fromInput = screen.getByPlaceholderText(/DEL \(Delhi\)/i);
       const toInput = screen.getByPlaceholderText(/BOM \(Mumbai\)/i);
 
-      fireEvent.change(fromInput, { target: { value: 'IDR' } });
-      fireEvent.change(toInput, { target: { value: 'BLR' } });
+      await selectAirportViaInput(fromInput, 'Indore', 'IDR', 'Indore');
+      await selectAirportViaInput(toInput, 'Bangalore', 'BLR', 'Bengaluru');
 
       const searchBtn = screen.getByRole('button', { name: /Search Flights/i });
       fireEvent.click(searchBtn);
@@ -319,15 +342,11 @@ describe('Dynamic Flight Airport/City Search & Integration', () => {
     it('executes search for international route: Mumbai (BOM) -> Dubai (DXB)', async () => {
       render(<FlightsPage />);
 
-      await waitFor(() => {
-        expect(screen.getByRole('button', { name: /Search Flights/i })).toBeInTheDocument();
-      });
-
       const fromInput = screen.getByPlaceholderText(/DEL \(Delhi\)/i);
       const toInput = screen.getByPlaceholderText(/BOM \(Mumbai\)/i);
 
-      fireEvent.change(fromInput, { target: { value: 'BOM' } });
-      fireEvent.change(toInput, { target: { value: 'DXB' } });
+      await selectAirportViaInput(fromInput, 'Mumbai', 'BOM', 'Mumbai');
+      await selectAirportViaInput(toInput, 'Dubai', 'DXB', 'Dubai');
 
       const searchBtn = screen.getByRole('button', { name: /Search Flights/i });
       fireEvent.click(searchBtn);
@@ -345,15 +364,11 @@ describe('Dynamic Flight Airport/City Search & Integration', () => {
     it('executes search for long-haul route: Delhi (DEL) -> London (LHR)', async () => {
       render(<FlightsPage />);
 
-      await waitFor(() => {
-        expect(screen.getByRole('button', { name: /Search Flights/i })).toBeInTheDocument();
-      });
-
       const fromInput = screen.getByPlaceholderText(/DEL \(Delhi\)/i);
       const toInput = screen.getByPlaceholderText(/BOM \(Mumbai\)/i);
 
-      fireEvent.change(fromInput, { target: { value: 'DEL' } });
-      fireEvent.change(toInput, { target: { value: 'LHR' } });
+      await selectAirportViaInput(fromInput, 'Delhi', 'DEL', 'Delhi');
+      await selectAirportViaInput(toInput, 'London', 'LHR', 'London');
 
       const searchBtn = screen.getByRole('button', { name: /Search Flights/i });
       fireEvent.click(searchBtn);
@@ -371,15 +386,11 @@ describe('Dynamic Flight Airport/City Search & Integration', () => {
     it('executes search for US domestic route: New York (JFK) -> Los Angeles (LAX)', async () => {
       render(<FlightsPage />);
 
-      await waitFor(() => {
-        expect(screen.getByRole('button', { name: /Search Flights/i })).toBeInTheDocument();
-      });
-
       const fromInput = screen.getByPlaceholderText(/DEL \(Delhi\)/i);
       const toInput = screen.getByPlaceholderText(/BOM \(Mumbai\)/i);
 
-      fireEvent.change(fromInput, { target: { value: 'JFK' } });
-      fireEvent.change(toInput, { target: { value: 'LAX' } });
+      await selectAirportViaInput(fromInput, 'New York', 'JFK', 'New York');
+      await selectAirportViaInput(toInput, 'Los Angeles', 'LAX', 'Los Angeles');
 
       const searchBtn = screen.getByRole('button', { name: /Search Flights/i });
       fireEvent.click(searchBtn);
@@ -409,6 +420,15 @@ describe('Dynamic Flight Airport/City Search & Integration', () => {
       });
 
       render(<FlightsPage />);
+
+      const fromInput = screen.getByPlaceholderText(/DEL \(Delhi\)/i);
+      const toInput = screen.getByPlaceholderText(/BOM \(Mumbai\)/i);
+
+      await selectAirportViaInput(fromInput, 'Bhopal', 'BHO', 'Bhopal');
+      await selectAirportViaInput(toInput, 'Dubai', 'DXB', 'Dubai');
+
+      const searchBtn = screen.getByRole('button', { name: /Search Flights/i });
+      fireEvent.click(searchBtn);
 
       await waitFor(() => {
         expect(

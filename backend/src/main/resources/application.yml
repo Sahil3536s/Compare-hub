@@ -37,6 +37,11 @@ app:
   ml:
     service-url: ${ML_SERVICE_URL:http://localhost:8000}
     min-history-points: ${MIN_HISTORY_POINTS:20}
+  location:
+    fallback-enabled: ${LOCATION_FALLBACK_MODE:false}
+    mapbox:
+      access-token: ${MAPBOX_ACCESS_TOKEN:}
+      country-filter: ${LOCATION_COUNTRY_FILTER:in}
 
 # Resilience4j Defaults
 resilience4j:

@@ -30,24 +30,12 @@ export const FlightsPage = () => {
 
   // Search parameters & structured airport states
   const [tripType, setTripType] = useState('oneWay'); // 'oneWay' | 'roundTrip'
-  const [origin, setOrigin] = useState('DEL');
-  const [destination, setDestination] = useState('BOM');
-  const [fromInput, setFromInput] = useState('DEL');
-  const [toInput, setToInput] = useState('BOM');
-  const [fromAirport, setFromAirport] = useState({
-    iataCode: 'DEL',
-    name: 'Indira Gandhi International Airport',
-    cityName: 'Delhi',
-    countryName: 'India',
-    displayName: 'DEL (Delhi)',
-  });
-  const [toAirport, setToAirport] = useState({
-    iataCode: 'BOM',
-    name: 'Chhatrapati Shivaji Maharaj International Airport',
-    cityName: 'Mumbai',
-    countryName: 'India',
-    displayName: 'BOM (Mumbai)',
-  });
+  const [origin, setOrigin] = useState('');
+  const [destination, setDestination] = useState('');
+  const [fromInput, setFromInput] = useState('');
+  const [toInput, setToInput] = useState('');
+  const [fromAirport, setFromAirport] = useState(null);
+  const [toAirport, setToAirport] = useState(null);
 
   const [departureDate, setDepartureDate] = useState(() => {
     const d = new Date();
@@ -71,7 +59,7 @@ export const FlightsPage = () => {
   const [validationError, setValidationError] = useState('');
 
   // Results & Lifecycle states: 'IDLE' | 'LOADING' | 'SUCCESS' | 'EMPTY' | 'PARTIAL_SUCCESS' | 'ERROR'
-  const [pageState, setPageState] = useState('LOADING');
+  const [pageState, setPageState] = useState('IDLE');
   const [flights, setFlights] = useState([]);
   const [totalOffers, setTotalOffers] = useState(0);
   const [cheapestPrice, setCheapestPrice] = useState(null);
@@ -84,21 +72,16 @@ export const FlightsPage = () => {
 
   // Client-side validations
   const validateSearch = () => {
-    const normOrigin = (origin || fromInput || '').trim().toUpperCase();
-    const normDest = (destination || toInput || '').trim().toUpperCase();
-
-    if (!normOrigin || !normDest) {
-      return 'Please enter both origin and destination airport codes.';
+    if (!fromAirport || !fromAirport.iataCode) {
+      return 'Please select a valid origin airport from the suggestions.';
     }
 
-    // Extract raw 3-letter IATA code if text contains formatted "(DEL)" or similar
-    const extractCode = (str) => {
-      const match = str.match(/\b([A-Z]{3})\b/);
-      return match ? match[1] : str;
-    };
+    if (!toAirport || !toAirport.iataCode) {
+      return 'Please select a valid destination airport from the suggestions.';
+    }
 
-    const originCode = extractCode(normOrigin);
-    const destCode = extractCode(normDest);
+    const originCode = fromAirport.iataCode.trim().toUpperCase();
+    const destCode = toAirport.iataCode.trim().toUpperCase();
 
     if (originCode === destCode) {
       return 'Origin and destination airports must be different.';
@@ -132,37 +115,35 @@ export const FlightsPage = () => {
   const handleSelectFromAirport = (airport) => {
     setFromAirport(airport);
     setOrigin(airport.iataCode);
-    setFromInput(airport.iataCode);
+    const label = airport.displayName || (airport.cityName ? `${airport.iataCode} (${airport.cityName})` : airport.iataCode);
+    setFromInput(label);
     setValidationError('');
   };
 
   const handleSelectToAirport = (airport) => {
     setToAirport(airport);
     setDestination(airport.iataCode);
-    setToInput(airport.iataCode);
+    const label = airport.displayName || (airport.cityName ? `${airport.iataCode} (${airport.cityName})` : airport.iataCode);
+    setToInput(label);
     setValidationError('');
   };
 
   const handleFromInputChange = (val) => {
     setFromInput(val);
-    const upper = val.trim().toUpperCase();
-    if (upper.length === 3 && /^[A-Z]{3}$/.test(upper)) {
-      setOrigin(upper);
-      setFromAirport((prev) => ({ ...prev, iataCode: upper }));
-    } else {
-      setOrigin(upper);
+    // If user modifies text away from selected airport, invalidate structured selection
+    if (!fromAirport || (val !== fromAirport.displayName && val !== fromAirport.iataCode && val !== `${fromAirport.iataCode} (${fromAirport.cityName})`)) {
+      setFromAirport(null);
+      setOrigin('');
     }
     setValidationError('');
   };
 
   const handleToInputChange = (val) => {
     setToInput(val);
-    const upper = val.trim().toUpperCase();
-    if (upper.length === 3 && /^[A-Z]{3}$/.test(upper)) {
-      setDestination(upper);
-      setToAirport((prev) => ({ ...prev, iataCode: upper }));
-    } else {
-      setDestination(upper);
+    // If user modifies text away from selected airport, invalidate structured selection
+    if (!toAirport || (val !== toAirport.displayName && val !== toAirport.iataCode && val !== `${toAirport.iataCode} (${toAirport.cityName})`)) {
+      setToAirport(null);
+      setDestination('');
     }
     setValidationError('');
   };
@@ -187,11 +168,18 @@ export const FlightsPage = () => {
       iataCode: apt.code,
       name: apt.name,
       cityName: apt.city,
+      countryName: 'India',
       displayName: `${apt.code} (${apt.city})`,
     };
-    setDestination(apt.code);
-    setToInput(apt.code);
-    setToAirport(airportObj);
+    if (!fromAirport) {
+      setFromAirport(airportObj);
+      setOrigin(apt.code);
+      setFromInput(`${apt.code} (${apt.city})`);
+    } else {
+      setToAirport(airportObj);
+      setDestination(apt.code);
+      setToInput(`${apt.code} (${apt.city})`);
+    }
     setValidationError('');
   };
 
@@ -205,14 +193,8 @@ export const FlightsPage = () => {
     setPageState('LOADING');
     setErrorMessage('');
 
-    // Extract clean 3-letter IATA code
-    const extractCode = (str) => {
-      const match = str.match(/\b([A-Z]{3})\b/);
-      return match ? match[1] : str.slice(0, 3).toUpperCase();
-    };
-
-    const originCode = extractCode((origin || fromInput).trim().toUpperCase());
-    const destCode = extractCode((destination || toInput).trim().toUpperCase());
+    const originCode = fromAirport.iataCode.trim().toUpperCase();
+    const destCode = toAirport.iataCode.trim().toUpperCase();
 
     try {
       const data = await searchFlights({
@@ -293,7 +275,9 @@ export const FlightsPage = () => {
       isFirstRender.current = false;
       return;
     }
-    executeFlightSearch();
+    if (fromAirport && toAirport && pageState !== 'IDLE') {
+      executeFlightSearch();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedRankingTab, stops, departureTime, selectedAirline, maxPrice, maxDuration]);
 

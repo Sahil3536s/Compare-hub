@@ -233,6 +233,8 @@ export const AirportAutocomplete = ({
         <div className="absolute inset-y-0 right-0 pr-3 flex items-center gap-1.5">
           {loading && (
             <div
+              role="status"
+              aria-label="Loading suggestions"
               data-testid="airport-autocomplete-loading"
               className="w-4 h-4 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"
             />
