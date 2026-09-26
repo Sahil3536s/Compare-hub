@@ -3,14 +3,20 @@ package com.comparehub.provider.impl;
 import com.comparehub.dto.LocationDto;
 import com.comparehub.dto.PlaceSuggestionDto;
 import com.comparehub.dto.RouteEstimateResponseDto;
+import com.comparehub.exception.ProviderUnavailableException;
 import com.comparehub.provider.LocationProvider;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientResponseException;
 
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileReader;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -49,10 +55,75 @@ public class MapboxLocationProvider implements LocationProvider {
         this.mapboxAccessToken = mapboxAccessToken;
         this.fallbackEnabled = fallbackEnabled;
         this.countryFilter = countryFilter != null ? countryFilter : "in";
+        loadConfiguration();
+    }
+
+    @PostConstruct
+    public void init() {
+        loadConfiguration();
+        log.info("Mapbox configured: {}", isMapboxTokenValid());
+    }
+
+    public void loadConfiguration() {
+        if (mapboxAccessToken == null || mapboxAccessToken.trim().isEmpty()) {
+            String envToken = System.getenv("MAPBOX_ACCESS_TOKEN");
+            if (envToken != null && !envToken.isBlank()) {
+                mapboxAccessToken = envToken.trim();
+            } else {
+                String propToken = System.getProperty("MAPBOX_ACCESS_TOKEN");
+                if (propToken != null && !propToken.isBlank()) {
+                    mapboxAccessToken = propToken.trim();
+                } else {
+                    mapboxAccessToken = tryLoadTokenFromDotEnv();
+                }
+            }
+        }
+        if (mapboxAccessToken != null) {
+            mapboxAccessToken = mapboxAccessToken.trim().replaceAll("^[\"']|[\"']$", "");
+        }
+        if (countryFilter == null || countryFilter.trim().isEmpty()) {
+            String envCountry = System.getenv("LOCATION_COUNTRY_FILTER");
+            if (envCountry != null && !envCountry.isBlank()) {
+                countryFilter = envCountry.trim();
+            }
+        }
+        if (countryFilter != null) {
+            countryFilter = countryFilter.trim().replaceAll("^[\"']|[\"']$", "");
+        }
+    }
+
+    private String tryLoadTokenFromDotEnv() {
+        String[] possiblePaths = {
+            ".env",
+            "backend/.env",
+            "../.env",
+            "../backend/.env"
+        };
+        for (String path : possiblePaths) {
+            File file = new File(path);
+            if (file.exists() && file.isFile()) {
+                try (BufferedReader reader = new BufferedReader(new FileReader(file, StandardCharsets.UTF_8))) {
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        line = line.trim();
+                        if (line.startsWith("#") || line.isEmpty()) continue;
+                        if (line.startsWith("MAPBOX_ACCESS_TOKEN=")) {
+                            String val = line.substring("MAPBOX_ACCESS_TOKEN=".length()).trim();
+                            val = val.replaceAll("^[\"']|[\"']$", "");
+                            if (!val.isEmpty()) {
+                                return val;
+                            }
+                        }
+                    }
+                } catch (Exception ignored) {
+                }
+            }
+        }
+        return null;
     }
 
     public void setMapboxAccessToken(String mapboxAccessToken) {
-        this.mapboxAccessToken = mapboxAccessToken;
+        this.mapboxAccessToken = mapboxAccessToken != null ? mapboxAccessToken.trim() : null;
     }
 
     public void setFallbackEnabled(boolean fallbackEnabled) {
@@ -60,7 +131,7 @@ public class MapboxLocationProvider implements LocationProvider {
     }
 
     public void setCountryFilter(String countryFilter) {
-        this.countryFilter = countryFilter;
+        this.countryFilter = countryFilter != null ? countryFilter.trim() : "";
     }
 
     // Built-in geographic catalog covering key transit, academic, and landmark hubs across India
@@ -299,24 +370,14 @@ public class MapboxLocationProvider implements LocationProvider {
     @Override
     public List<PlaceSuggestionDto> getPlaceSuggestions(String query) {
         if (query == null || query.trim().length() < 2) {
-            return fallbackEnabled
-                    ? KNOWN_HUBS.stream().limit(5).collect(Collectors.toList())
-                    : Collections.emptyList();
+            return Collections.emptyList();
         }
 
         String trimmedQuery = query.trim();
 
         // 1. Try Mapbox Geocoding v5 if token is configured
         if (isMapboxTokenValid()) {
-            try {
-                List<PlaceSuggestionDto> mapboxResults = queryMapboxGeocoding(trimmedQuery);
-                if (mapboxResults != null && !mapboxResults.isEmpty()) {
-                    return mapboxResults;
-                }
-            } catch (Exception e) {
-                log.warn("Mapbox geocoding call failed for query '{}': {}. Falling back to internal geocoder.",
-                        trimmedQuery, e.getMessage());
-            }
+            return queryMapboxGeocoding(trimmedQuery);
         }
 
         // 2. Multi-city intelligent keyword matching across known transport, academic & landmark hubs
@@ -334,7 +395,8 @@ public class MapboxLocationProvider implements LocationProvider {
             }
         }
 
-        return Collections.emptyList();
+        log.warn("Mapbox location search requested for '{}' but Mapbox access token is not configured.", trimmedQuery);
+        throw new ProviderUnavailableException("Location search service is unavailable: Mapbox access token is not configured.");
     }
 
     @Override
@@ -347,15 +409,11 @@ public class MapboxLocationProvider implements LocationProvider {
 
         // 1. Try Mapbox Geocoding if token available
         if (isMapboxTokenValid()) {
-            try {
-                List<PlaceSuggestionDto> mapboxResults = queryMapboxGeocoding(trimmed);
-                if (mapboxResults != null && !mapboxResults.isEmpty()) {
-                    PlaceSuggestionDto first = mapboxResults.get(0);
-                    return toLocationDto(first);
-                }
-            } catch (Exception e) {
-                log.warn("Mapbox geocode failed for '{}': {}", trimmed, e.getMessage());
+            List<PlaceSuggestionDto> mapboxResults = queryMapboxGeocoding(trimmed);
+            if (mapboxResults != null && !mapboxResults.isEmpty()) {
+                return toLocationDto(mapboxResults.get(0));
             }
+            return null;
         }
 
         // 2. Match known hubs if fallback is enabled
@@ -380,7 +438,8 @@ public class MapboxLocationProvider implements LocationProvider {
             }
         }
 
-        return null;
+        log.warn("Mapbox geocoding requested for '{}' but Mapbox access token is not configured.", trimmed);
+        throw new ProviderUnavailableException("Location search service is unavailable: Mapbox access token is not configured.");
     }
 
     @Override
@@ -404,16 +463,17 @@ public class MapboxLocationProvider implements LocationProvider {
                         JsonNode first = features.get(0);
                         String placeName = first.path("place_name").asText(String.format(Locale.US, "Location (%.5f, %.5f)", lat, lon));
                         String name = first.path("text").asText(placeName.split(",")[0]);
+                        String placeId = first.path("id").asText("");
                         return LocationDto.builder()
                                 .name(name)
                                 .formattedAddress(placeName)
                                 .latitude(lat)
                                 .longitude(lon)
                                 .address(placeName)
-                                .city(extractCityFromContext(first))
-                                .state(extractStateFromContext(first))
-                                .country("India")
-                                .providerPlaceId(first.path("id").asText("revgeo-" + Math.abs(placeName.hashCode())))
+                                .city(extractCity(first, name, placeId))
+                                .state(extractState(first, name, placeId))
+                                .country(extractCountry(first, placeId, placeName))
+                                .providerPlaceId(!placeId.isEmpty() ? placeId : ("revgeo-" + Math.abs(placeName.hashCode())))
                                 .build();
                     }
                 }
@@ -546,51 +606,94 @@ public class MapboxLocationProvider implements LocationProvider {
 
     // ── Helper Methods ──
 
-    private boolean isMapboxTokenValid() {
-        return mapboxAccessToken != null && !mapboxAccessToken.isBlank() && mapboxAccessToken.startsWith("pk.");
+    public boolean isMapboxTokenValid() {
+        return mapboxAccessToken != null
+                && !mapboxAccessToken.isBlank()
+                && (mapboxAccessToken.startsWith("pk.") || mapboxAccessToken.startsWith("sk."));
     }
 
     private List<PlaceSuggestionDto> queryMapboxGeocoding(String query) {
-        String encoded = URLEncoder.encode(query, StandardCharsets.UTF_8);
+        String encoded = URLEncoder.encode(query, StandardCharsets.UTF_8).replace("+", "%20");
         String countryParam = (countryFilter != null && !countryFilter.trim().isBlank())
                 ? "&country=" + URLEncoder.encode(countryFilter.trim(), StandardCharsets.UTF_8)
                 : "";
         String url = String.format(Locale.US,
-                "https://api.mapbox.com/geocoding/v5/mapbox.places/%s.json?access_token=%s&autocomplete=true&limit=6%s",
-                encoded, mapboxAccessToken, countryParam);
+                "https://api.mapbox.com/geocoding/v5/mapbox.places/%s.json?access_token=%s&autocomplete=true&limit=8%s",
+                encoded, mapboxAccessToken.trim(), countryParam);
 
-        String json = restClient.get().uri(url).retrieve().body(String.class);
-        if (json == null) return List.of();
+        String json;
+        try {
+            json = restClient.get().uri(url).retrieve().body(String.class);
+        } catch (RestClientResponseException e) {
+            if (e.getStatusCode().value() == 401 || e.getStatusCode().value() == 403) {
+                log.error("Mapbox authentication failed with status {}. Verify MAPBOX_ACCESS_TOKEN.", e.getStatusCode().value());
+                throw new ProviderUnavailableException("Location search service is unavailable: invalid Mapbox access token.");
+            }
+            log.error("Mapbox API returned status {}: {}", e.getStatusCode().value(), e.getMessage());
+            throw new ProviderUnavailableException("Location search is temporarily unavailable.");
+        } catch (Exception e) {
+            if (e instanceof ProviderUnavailableException) {
+                throw (ProviderUnavailableException) e;
+            }
+            log.error("Mapbox geocoding call failed for query '{}': {}", query, e.getMessage());
+            throw new ProviderUnavailableException("Location search is temporarily unavailable.");
+        }
 
+        if (json == null || json.isBlank()) {
+            return Collections.emptyList();
+        }
+
+        return parseMapboxFeatures(json);
+    }
+
+    private List<PlaceSuggestionDto> parseMapboxFeatures(String json) {
         List<PlaceSuggestionDto> results = new ArrayList<>();
         try {
             JsonNode root = objectMapper.readTree(json);
             JsonNode features = root.path("features");
             if (features.isArray()) {
                 for (JsonNode f : features) {
-                    String placeId = f.path("id").asText();
-                    String placeName = f.path("place_name").asText();
-                    String text = f.path("text").asText();
                     JsonNode center = f.path("center");
                     if (center.isArray() && center.size() >= 2) {
                         double lon = center.get(0).asDouble();
                         double lat = center.get(1).asDouble();
 
-                        String city = extractCityFromContext(f);
-                        String state = extractStateFromContext(f);
+                        String placeId = f.path("id").asText("");
+                        String text = f.path("text").asText("").trim();
+                        if (text.isEmpty()) {
+                            text = f.path("matching_text").asText("").trim();
+                        }
+                        String placeName = f.path("place_name").asText("").trim();
+                        if (placeName.isEmpty()) {
+                            placeName = f.path("matching_place_name").asText("").trim();
+                        }
+
+                        String mainText = !text.isEmpty() ? text : placeName;
+                        String formattedAddress = !placeName.isEmpty() ? placeName : mainText;
+
+                        String secondaryText = "";
+                        if (formattedAddress.startsWith(mainText + ", ")) {
+                            secondaryText = formattedAddress.substring(mainText.length() + 2).trim();
+                        } else if (!formattedAddress.equalsIgnoreCase(mainText)) {
+                            secondaryText = formattedAddress;
+                        }
+
+                        String city = extractCity(f, text, placeId);
+                        String state = extractState(f, text, placeId);
+                        String country = extractCountry(f, placeId, formattedAddress);
 
                         results.add(PlaceSuggestionDto.builder()
                                 .placeId(placeId)
-                                .mainText(text)
-                                .secondaryText(placeName)
-                                .fullAddress(placeName)
+                                .mainText(mainText)
+                                .secondaryText(secondaryText)
+                                .fullAddress(formattedAddress)
                                 .latitude(lat)
                                 .longitude(lon)
-                                .name(text)
-                                .formattedAddress(placeName)
+                                .name(mainText)
+                                .formattedAddress(formattedAddress)
                                 .city(city)
                                 .state(state)
-                                .country("India")
+                                .country(country)
                                 .providerPlaceId(placeId)
                                 .build());
                     }
@@ -598,34 +701,68 @@ public class MapboxLocationProvider implements LocationProvider {
             }
         } catch (Exception e) {
             log.error("Failed to parse Mapbox JSON response: {}", e.getMessage());
+            throw new ProviderUnavailableException("Location search is temporarily unavailable.");
         }
         return results;
     }
 
-    private String extractCityFromContext(JsonNode feature) {
+    private String extractCity(JsonNode feature, String text, String placeId) {
         JsonNode context = feature.path("context");
         if (context.isArray()) {
             for (JsonNode c : context) {
-                String id = c.path("id").asText();
-                if (id.startsWith("place") || id.startsWith("locality")) {
-                    return c.path("text").asText();
+                String id = c.path("id").asText("");
+                if (id.startsWith("place")) {
+                    return c.path("text").asText("");
                 }
             }
         }
-        return "City";
+        if (placeId.startsWith("place") || placeId.startsWith("locality")) {
+            return text;
+        }
+        if (context.isArray()) {
+            for (JsonNode c : context) {
+                String id = c.path("id").asText("");
+                if (id.startsWith("locality") || id.startsWith("district")) {
+                    return c.path("text").asText("");
+                }
+            }
+        }
+        return "";
     }
 
-    private String extractStateFromContext(JsonNode feature) {
+    private String extractState(JsonNode feature, String text, String placeId) {
+        if (placeId.startsWith("region")) {
+            return text;
+        }
         JsonNode context = feature.path("context");
         if (context.isArray()) {
             for (JsonNode c : context) {
-                String id = c.path("id").asText();
+                String id = c.path("id").asText("");
                 if (id.startsWith("region")) {
-                    return c.path("text").asText();
+                    return c.path("text").asText("");
                 }
             }
         }
-        return "State";
+        return "";
+    }
+
+    private String extractCountry(JsonNode feature, String placeId, String formattedAddress) {
+        if (placeId.startsWith("country")) {
+            return feature.path("text").asText("India");
+        }
+        JsonNode context = feature.path("context");
+        if (context.isArray()) {
+            for (JsonNode c : context) {
+                String id = c.path("id").asText("");
+                if (id.startsWith("country")) {
+                    return c.path("text").asText("India");
+                }
+            }
+        }
+        if (countryFilter != null && countryFilter.equalsIgnoreCase("in")) {
+            return "India";
+        }
+        return (formattedAddress != null && formattedAddress.toLowerCase(Locale.ROOT).contains("india")) ? "India" : "";
     }
 
     private LocationDto toLocationDto(PlaceSuggestionDto p) {
@@ -635,8 +772,8 @@ public class MapboxLocationProvider implements LocationProvider {
                 .latitude(p.getLatitude())
                 .longitude(p.getLongitude())
                 .address(p.getFormattedAddress())
-                .city(p.getCity() != null ? p.getCity() : "City")
-                .state(p.getState() != null ? p.getState() : "State")
+                .city(p.getCity() != null ? p.getCity() : "")
+                .state(p.getState() != null ? p.getState() : "")
                 .country(p.getCountry() != null ? p.getCountry() : "India")
                 .providerPlaceId(p.getProviderPlaceId())
                 .build();

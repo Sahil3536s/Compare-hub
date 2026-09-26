@@ -2,6 +2,7 @@ package com.comparehub.controller;
 
 import com.comparehub.dto.LocationDto;
 import com.comparehub.dto.PlaceSuggestionDto;
+import com.comparehub.exception.ProviderUnavailableException;
 import com.comparehub.security.CustomUserDetailsService;
 import com.comparehub.security.JwtAuthenticationEntryPoint;
 import com.comparehub.security.JwtTokenProvider;
@@ -174,6 +175,31 @@ class LocationControllerTest {
                 .andExpect(jsonPath("$.distanceKm").value(65.2))
                 .andExpect(jsonPath("$.durationMinutes").value(75))
                 .andExpect(jsonPath("$.routeSource").value("MAPBOX"));
+    }
+
+    @Test
+    void shouldReturn503WhenLocationServiceThrowsProviderUnavailableException() throws Exception {
+        when(locationService.suggestPlaces("IFFCO Chowk"))
+                .thenThrow(new ProviderUnavailableException("Location search service is unavailable: Mapbox access token is not configured."));
+
+        mockMvc.perform(get("/api/location/suggest")
+                        .param("q", "IFFCO Chowk")
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.status").value(503))
+                .andExpect(jsonPath("$.message").value("Location search service is unavailable: Mapbox access token is not configured."));
+    }
+
+    @Test
+    void shouldReturn200EmptyListWhenNoMatchesFound() throws Exception {
+        when(locationService.suggestPlaces("zzzzxxxyyyy123")).thenReturn(List.of());
+
+        mockMvc.perform(get("/api/location/suggest")
+                        .param("q", "zzzzxxxyyyy123")
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isArray())
+                .andExpect(jsonPath("$.length()").value(0));
     }
 }
 

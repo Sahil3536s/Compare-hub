@@ -268,6 +268,150 @@ describe('Dynamic Ride Location Support & Upgrades', () => {
         })
       );
     });
+
+    it('displays "Location search service is unavailable." when backend returns 503 missing token error', async () => {
+      const err = new Error('503 Service Unavailable');
+      err.response = {
+        status: 503,
+        data: { message: 'Location search service is unavailable: Mapbox access token is not configured.' },
+      };
+      locationService.suggestPlaces.mockRejectedValue(err);
+
+      render(
+        <LocationAutocomplete
+          id="test-loc"
+          value=""
+          onChange={vi.fn()}
+          onSelect={vi.fn()}
+        />
+      );
+
+      const input = screen.getByRole('combobox');
+      fireEvent.change(input, { target: { value: 'IFFCO Chowk' } });
+
+      await waitFor(() => {
+        const errorEl = screen.getByTestId('location-search-error');
+        expect(errorEl).toHaveTextContent('Location search service is unavailable.');
+      });
+    });
+
+    it('displays "Location search is temporarily unavailable." when backend returns 503 service error', async () => {
+      const err = new Error('503 Service Unavailable');
+      err.response = {
+        status: 503,
+        data: { message: 'Mapbox geocoding service is unavailable or returned error.' },
+      };
+      locationService.suggestPlaces.mockRejectedValue(err);
+
+      render(
+        <LocationAutocomplete
+          id="test-loc"
+          value=""
+          onChange={vi.fn()}
+          onSelect={vi.fn()}
+        />
+      );
+
+      const input = screen.getByRole('combobox');
+      fireEvent.change(input, { target: { value: 'Cyber City' } });
+
+      await waitFor(() => {
+        const errorEl = screen.getByTestId('location-search-error');
+        expect(errorEl).toHaveTextContent('Location search is temporarily unavailable.');
+      });
+    });
+
+    it('displays "Unable to search locations. Please try again." on network error', async () => {
+      const err = new Error('Network Error');
+      locationService.suggestPlaces.mockRejectedValue(err);
+
+      render(
+        <LocationAutocomplete
+          id="test-loc"
+          value=""
+          onChange={vi.fn()}
+          onSelect={vi.fn()}
+        />
+      );
+
+      const input = screen.getByRole('combobox');
+      fireEvent.change(input, { target: { value: 'India Gate' } });
+
+      await waitFor(() => {
+        const errorEl = screen.getByTestId('location-search-error');
+        expect(errorEl).toHaveTextContent('Unable to search locations. Please try again.');
+      });
+    });
+
+    it('displays "No matching location found." for HTTP 200 with empty list', async () => {
+      locationService.suggestPlaces.mockResolvedValue([]);
+
+      render(
+        <LocationAutocomplete
+          id="test-loc"
+          value=""
+          onChange={vi.fn()}
+          onSelect={vi.fn()}
+        />
+      );
+
+      const input = screen.getByRole('combobox');
+      fireEvent.change(input, { target: { value: 'NonexistentPlaceXYZ' } });
+
+      await waitFor(() => {
+        const emptyEl = screen.getByTestId('no-matching-location');
+        expect(emptyEl).toHaveTextContent('No matching location found.');
+      });
+    });
+
+    it('cancels stale query responses when input changes rapidly', async () => {
+      let resolveFirst;
+      const firstPromise = new Promise((resolve) => {
+        resolveFirst = resolve;
+      });
+
+      locationService.suggestPlaces
+        .mockReturnValueOnce(firstPromise)
+        .mockResolvedValueOnce([
+          {
+            name: 'Mumbai Airport',
+            formattedAddress: 'Navpada, Vile Parle East, Mumbai, Maharashtra 400099',
+            latitude: 19.0896,
+            longitude: 72.8656,
+            providerPlaceId: 'bom-airport',
+          },
+        ]);
+
+      render(
+        <LocationAutocomplete
+          id="test-loc"
+          value=""
+          onChange={vi.fn()}
+          onSelect={vi.fn()}
+        />
+      );
+
+      const input = screen.getByRole('combobox');
+      fireEvent.change(input, { target: { value: 'First' } });
+      await new Promise((r) => setTimeout(r, 350));
+
+      fireEvent.change(input, { target: { value: 'Mumbai Airport' } });
+      await new Promise((r) => setTimeout(r, 350));
+
+      resolveFirst([
+        {
+          name: 'Stale Old Place',
+          formattedAddress: 'Old address',
+          latitude: 10,
+          longitude: 20,
+        },
+      ]);
+
+      await waitFor(() => {
+        expect(screen.getByText('Mumbai Airport')).toBeInTheDocument();
+      });
+      expect(screen.queryByText('Stale Old Place')).not.toBeInTheDocument();
+    });
   });
 
   // =========================================================================
@@ -437,6 +581,265 @@ describe('Dynamic Ride Location Support & Upgrades', () => {
       const mainPathD = paths[0].getAttribute('d');
       expect(mainPathD).toBeTruthy();
       expect(mainPathD.startsWith('M')).toBe(true);
+    });
+  });
+
+  // =========================================================================
+  // 6. RIDE SELECTION FLOW, COORDINATE ENFORCEMENT & REAL ROUTES
+  // =========================================================================
+  describe('Ride Selection Flow, Coordinate Enforcement & Real Routes', () => {
+    it('rejects raw unselected pickup text when location coordinates cannot be resolved', async () => {
+      locationService.geocodeAddress.mockResolvedValue(null);
+      render(<RidesPage />);
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /Compare Rides/i })).toBeInTheDocument();
+      });
+
+      const pickupInput = screen.getByLabelText(/Pickup Location/i);
+      fireEvent.change(pickupInput, { target: { value: 'Unresolved Custom Place 123' } });
+
+      const compareBtn = screen.getByRole('button', { name: /Compare Rides/i });
+      fireEvent.click(compareBtn);
+
+      await waitFor(() => {
+        expect(screen.getByRole('alert')).toHaveTextContent(
+          /Please select a valid pickup location from the suggestions/i
+        );
+      });
+    });
+
+    it('rejects raw unselected destination text when location coordinates cannot be resolved', async () => {
+      locationService.geocodeAddress.mockResolvedValue(null);
+      render(<RidesPage />);
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /Compare Rides/i })).toBeInTheDocument();
+      });
+
+      const dropInput = screen.getByLabelText(/^Destination$/i);
+      fireEvent.change(dropInput, { target: { value: 'Unresolved Destination 456' } });
+
+      const compareBtn = screen.getByRole('button', { name: /Compare Rides/i });
+      fireEvent.click(compareBtn);
+
+      await waitFor(() => {
+        expect(screen.getByRole('alert')).toHaveTextContent(
+          /Please select a valid destination location from the suggestions/i
+        );
+      });
+    });
+
+    it('launches comparison with real coordinates for IFFCO Chowk -> IGI Airport', async () => {
+      locationService.suggestPlaces.mockImplementation(async (query) => {
+        if (query.includes('IFFCO')) {
+          return [
+            {
+              name: 'IFFCO Chowk',
+              formattedAddress: 'MG Road, Sector 29, Gurugram, Haryana 122002',
+              latitude: 28.4714,
+              longitude: 77.0725,
+              city: 'Gurugram',
+              state: 'Haryana',
+              country: 'India',
+              providerPlaceId: 'poi.iffco',
+            },
+          ];
+        }
+        if (query.includes('IGI')) {
+          return [
+            {
+              name: 'Indira Gandhi International Airport',
+              formattedAddress: 'Palam, New Delhi, Delhi 110037',
+              latitude: 28.5562,
+              longitude: 77.1000,
+              city: 'New Delhi',
+              state: 'Delhi',
+              country: 'India',
+              providerPlaceId: 'poi.igi',
+            },
+          ];
+        }
+        return [];
+      });
+
+      render(<RidesPage />);
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /Compare Rides/i })).toBeInTheDocument();
+      });
+
+      // Type and select pickup: IFFCO Chowk
+      const pickupInput = screen.getByLabelText(/Pickup Location/i);
+      fireEvent.change(pickupInput, { target: { value: 'IFFCO Chowk' } });
+      const pickupOpt = await screen.findByRole('option', { name: /IFFCO Chowk/i });
+      fireEvent.click(pickupOpt);
+
+      // Type and select destination: IGI Airport
+      const dropInput = screen.getByLabelText(/^Destination$/i);
+      fireEvent.change(dropInput, { target: { value: 'IGI Airport' } });
+      const dropOpt = await screen.findByRole('option', { name: /Indira Gandhi International Airport/i });
+      fireEvent.click(dropOpt);
+
+      const compareBtn = await screen.findByRole('button', { name: /Compare Rides|Finding/i });
+      if (!compareBtn.disabled) {
+        fireEvent.click(compareBtn);
+      }
+
+      await waitFor(() => {
+        expect(rideService.compareRides).toHaveBeenCalledWith(
+          expect.objectContaining({
+            pickup: expect.objectContaining({
+              latitude: 28.4714,
+              longitude: 77.0725,
+            }),
+            destination: expect.objectContaining({
+              latitude: 28.5562,
+              longitude: 77.1000,
+            }),
+          })
+        );
+      });
+    });
+
+    it('launches comparison with real coordinates for Bhopal Junction -> Bhopal Airport', async () => {
+      locationService.suggestPlaces.mockImplementation(async (query) => {
+        if (query.includes('Bhopal Junction')) {
+          return [
+            {
+              name: 'Bhopal Junction',
+              formattedAddress: 'Hamidia Road, Bhopal, Madhya Pradesh 462001',
+              latitude: 23.2599,
+              longitude: 77.4126,
+              city: 'Bhopal',
+              state: 'Madhya Pradesh',
+              country: 'India',
+              providerPlaceId: 'poi.bhopal-junc',
+            },
+          ];
+        }
+        if (query.includes('Airport') || query.includes('Raja Bhoj')) {
+          return [
+            {
+              name: 'Raja Bhoj Airport Bhopal',
+              formattedAddress: 'Airport Road, Gandhi Nagar, Bhopal, Madhya Pradesh 462036',
+              latitude: 23.2875,
+              longitude: 77.3378,
+              city: 'Bhopal',
+              state: 'Madhya Pradesh',
+              country: 'India',
+              providerPlaceId: 'poi.bhopal-air',
+            },
+          ];
+        }
+        return [];
+      });
+
+      render(<RidesPage />);
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /Compare Rides/i })).toBeInTheDocument();
+      });
+
+      const pickupInput = screen.getByLabelText(/Pickup Location/i);
+      fireEvent.change(pickupInput, { target: { value: 'Bhopal Junction' } });
+      const pickupOpt = await screen.findByRole('option', { name: /Bhopal Junction/i });
+      fireEvent.click(pickupOpt);
+
+      const dropInput = screen.getByLabelText(/^Destination$/i);
+      fireEvent.change(dropInput, { target: { value: 'Raja Bhoj' } });
+      const dropOpt = await screen.findByRole('option', { name: /Raja Bhoj Airport Bhopal/i });
+      fireEvent.click(dropOpt);
+
+      const compareBtn = await screen.findByRole('button', { name: /Compare Rides|Finding/i });
+      if (!compareBtn.disabled) {
+        fireEvent.click(compareBtn);
+      }
+
+      await waitFor(() => {
+        expect(rideService.compareRides).toHaveBeenCalledWith(
+          expect.objectContaining({
+            pickup: expect.objectContaining({
+              latitude: 23.2599,
+              longitude: 77.4126,
+            }),
+            destination: expect.objectContaining({
+              latitude: 23.2875,
+              longitude: 77.3378,
+            }),
+          })
+        );
+      });
+    });
+
+    it('launches comparison with real coordinates for Indore Airport -> Rajwada Palace', async () => {
+      locationService.suggestPlaces.mockImplementation(async (query) => {
+        if (query.includes('Indore')) {
+          return [
+            {
+              name: 'Devi Ahilyabai Holkar Airport',
+              formattedAddress: 'Depalpur Road, Indore, Madhya Pradesh 452005',
+              latitude: 22.7218,
+              longitude: 75.8011,
+              city: 'Indore',
+              state: 'Madhya Pradesh',
+              country: 'India',
+              providerPlaceId: 'poi.indore-air',
+            },
+          ];
+        }
+        if (query.includes('Rajwada')) {
+          return [
+            {
+              name: 'Rajwada Palace',
+              formattedAddress: 'MG Road, Rajwada, Indore, Madhya Pradesh 452002',
+              latitude: 22.7186,
+              longitude: 75.8554,
+              city: 'Indore',
+              state: 'Madhya Pradesh',
+              country: 'India',
+              providerPlaceId: 'poi.rajwada',
+            },
+          ];
+        }
+        return [];
+      });
+
+      render(<RidesPage />);
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /Compare Rides/i })).toBeInTheDocument();
+      });
+
+      const pickupInput = screen.getByLabelText(/Pickup Location/i);
+      fireEvent.change(pickupInput, { target: { value: 'Indore Airport' } });
+      const pickupOpt = await screen.findByRole('option', { name: /Devi Ahilyabai Holkar Airport/i });
+      fireEvent.click(pickupOpt);
+
+      const dropInput = screen.getByLabelText(/^Destination$/i);
+      fireEvent.change(dropInput, { target: { value: 'Rajwada Palace' } });
+      const dropOpt = await screen.findByRole('option', { name: /Rajwada Palace/i });
+      fireEvent.click(dropOpt);
+
+      const compareBtn = await screen.findByRole('button', { name: /Compare Rides|Finding/i });
+      if (!compareBtn.disabled) {
+        fireEvent.click(compareBtn);
+      }
+
+      await waitFor(() => {
+        expect(rideService.compareRides).toHaveBeenCalledWith(
+          expect.objectContaining({
+            pickup: expect.objectContaining({
+              latitude: 22.7218,
+              longitude: 75.8011,
+            }),
+            destination: expect.objectContaining({
+              latitude: 22.7186,
+              longitude: 75.8554,
+            }),
+          })
+        );
+      });
     });
   });
 });

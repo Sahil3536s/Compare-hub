@@ -416,6 +416,18 @@ export const RidesPage = () => {
         }
       }
 
+      if (!currentPickup || typeof currentPickup.latitude !== 'number' || typeof currentPickup.longitude !== 'number') {
+        setValidationError('Please select a valid pickup location from the suggestions.');
+        setPageState('IDLE');
+        return;
+      }
+
+      if (!currentDrop || typeof currentDrop.latitude !== 'number' || typeof currentDrop.longitude !== 'number') {
+        setValidationError('Please select a valid destination location from the suggestions.');
+        setPageState('IDLE');
+        return;
+      }
+
       // 1. Fetch Route Telemetry (Graceful failure handled)
       try {
         const routeData = await estimateRoute(currentPickup, currentDrop);
@@ -469,8 +481,10 @@ export const RidesPage = () => {
   }, [pickupLocation, dropLocation, vehicleCategory, sortBy, pickupInput, dropInput]);
 
   useEffect(() => {
-    executeRideComparison();
-  }, [executeRideComparison]);
+    if (pickupLocation?.latitude && dropLocation?.latitude) {
+      executeRideComparison();
+    }
+  }, [pickupLocation, dropLocation, vehicleCategory, sortBy]);
 
   const handleFormSubmit = (e) => {
     e.preventDefault();
@@ -582,6 +596,7 @@ export const RidesPage = () => {
                 value={pickupInput}
                 onChange={(val) => {
                   setPickupInput(val);
+                  setPickupLocation((prev) => (prev && (prev.name === val || prev.formattedAddress === val) ? prev : null));
                   setValidationError('');
                 }}
                 onSelect={handleSelectPickup}
@@ -619,6 +634,7 @@ export const RidesPage = () => {
                 value={dropInput}
                 onChange={(val) => {
                   setDropInput(val);
+                  setDropLocation((prev) => (prev && (prev.name === val || prev.formattedAddress === val) ? prev : null));
                   setValidationError('');
                 }}
                 onSelect={handleSelectDrop}

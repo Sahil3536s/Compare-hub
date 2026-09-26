@@ -1,10 +1,11 @@
 import apiClient from './api';
 
-export const suggestPlaces = async (query = '') => {
+export const suggestPlaces = async (query = '', signal) => {
   const response = await apiClient.get('/location/suggest', {
     params: { q: query },
+    signal,
   });
-  return response.data; // [{ placeId, mainText, secondaryText, fullAddress, latitude, longitude }]
+  return response.data; // [{ placeId, mainText, secondaryText, fullAddress, latitude, longitude, name, formattedAddress, city, state, country, providerPlaceId }]
 };
 
 export const geocodeAddress = async (address) => {

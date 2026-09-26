@@ -5,6 +5,7 @@ import com.comparehub.dto.PlaceSuggestionDto;
 import com.comparehub.dto.RouteEstimateResponseDto;
 import com.comparehub.provider.impl.MapboxLocationProvider;
 import com.comparehub.service.impl.LocationServiceImpl;
+import com.comparehub.exception.ProviderUnavailableException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -320,22 +321,14 @@ class LocationServiceTest {
     void shouldHandleNetworkTimeoutGracefullyWithoutCrashing() {
         when(responseSpec.body(String.class)).thenThrow(new RestClientException("Connection timeout"));
 
-        List<PlaceSuggestionDto> suggestions = mockLocationService.suggestPlaces("VIT Bhopal");
-        assertNotNull(suggestions);
-        assertTrue(suggestions.isEmpty());
-
-        LocationDto geocode = mockLocationService.geocodeAddress("VIT Bhopal");
-        assertNull(geocode);
+        assertThrows(ProviderUnavailableException.class, () -> mockLocationService.suggestPlaces("VIT Bhopal"));
+        assertThrows(ProviderUnavailableException.class, () -> mockLocationService.geocodeAddress("VIT Bhopal"));
     }
 
     @Test
     void shouldHandleMissingTokenWithoutCrashing() {
-        List<PlaceSuggestionDto> suggestions = strictNoTokenLocationService.suggestPlaces("VIT Bhopal");
-        assertNotNull(suggestions);
-        assertTrue(suggestions.isEmpty(), "With token missing and fallback disabled, must return empty list!");
-
-        LocationDto geocode = strictNoTokenLocationService.geocodeAddress("VIT Bhopal");
-        assertNull(geocode);
+        assertThrows(ProviderUnavailableException.class, () -> strictNoTokenLocationService.suggestPlaces("VIT Bhopal"));
+        assertThrows(ProviderUnavailableException.class, () -> strictNoTokenLocationService.geocodeAddress("VIT Bhopal"));
     }
 
     // ──────────────────────────────────────────────────────────────────────────
@@ -356,12 +349,190 @@ class LocationServiceTest {
 
     @Test
     void shouldDisallowKnownHubsWhenFallbackIsDisabled() {
-        List<PlaceSuggestionDto> suggestions = strictNoTokenLocationService.suggestPlaces("VIT B");
-        assertNotNull(suggestions);
-        assertTrue(suggestions.isEmpty(), "Fallback disabled must not search KNOWN_HUBS");
+        assertThrows(ProviderUnavailableException.class, () -> strictNoTokenLocationService.suggestPlaces("VIT B"));
+        assertThrows(ProviderUnavailableException.class, () -> strictNoTokenLocationService.geocodeAddress("Connaught Place"));
+    }
 
-        LocationDto geocode = strictNoTokenLocationService.geocodeAddress("Connaught Place");
-        assertNull(geocode);
+    // ──────────────────────────────────────────────────────────────────────────
+    // 8. Real Dynamic Place Autocomplete & Parsing (IFFCO Chowk, Cyber City, etc.)
+    // ──────────────────────────────────────────────────────────────────────────
+
+    @Test
+    void shouldDynamicallySearchAndParseIffcoChowkWithRealCoordinates() {
+        String iffcoJson = """
+                {
+                  "type": "FeatureCollection",
+                  "features": [
+                    {
+                      "id": "poi.515396160867",
+                      "type": "Feature",
+                      "place_type": ["poi"],
+                      "relevance": 1,
+                      "properties": {
+                        "address": "Mehrauli-Gurgaon Road"
+                      },
+                      "text": "IFFCO Chowk",
+                      "place_name": "IFFCO Chowk Metro Station, Mehrauli-Gurgaon Road, Gurugram, Haryana 122002, India",
+                      "center": [77.0722, 28.4720],
+                      "context": [
+                        { "id": "neighborhood.123", "text": "Sector 29" },
+                        { "id": "locality.456", "text": "Gurgaon" },
+                        { "id": "place.789", "text": "Gurugram" },
+                        { "id": "region.101", "text": "Haryana" },
+                        { "id": "country.102", "text": "India" }
+                      ]
+                    }
+                  ]
+                }
+                """;
+
+        when(responseSpec.body(String.class)).thenReturn(iffcoJson);
+
+        List<PlaceSuggestionDto> results = mockLocationService.suggestPlaces("IFFCO Chowk");
+
+        assertNotNull(results);
+        assertEquals(1, results.size());
+
+        PlaceSuggestionDto place = results.get(0);
+        assertEquals("poi.515396160867", place.getPlaceId());
+        assertEquals("IFFCO Chowk", place.getMainText());
+        assertEquals("IFFCO Chowk", place.getName());
+        assertEquals("IFFCO Chowk Metro Station, Mehrauli-Gurgaon Road, Gurugram, Haryana 122002, India", place.getFullAddress());
+        assertEquals("IFFCO Chowk Metro Station, Mehrauli-Gurgaon Road, Gurugram, Haryana 122002, India", place.getFormattedAddress());
+        assertEquals(28.4720, place.getLatitude(), 0.0001);
+        assertEquals(77.0722, place.getLongitude(), 0.0001);
+        assertEquals("Gurugram", place.getCity());
+        assertEquals("Haryana", place.getState());
+        assertEquals("India", place.getCountry());
+        assertEquals("poi.515396160867", place.getProviderPlaceId());
+        assertFalse(place.getSecondaryText().isEmpty());
+    }
+
+    @Test
+    void shouldParsePlaceWithoutCityOrStateGracefully() {
+        String minimalJson = """
+                {
+                  "type": "FeatureCollection",
+                  "features": [
+                    {
+                      "id": "address.999",
+                      "text": "Unnamed Road",
+                      "place_name": "Unnamed Road, India",
+                      "center": [77.1000, 28.5000]
+                    }
+                  ]
+                }
+                """;
+
+        when(responseSpec.body(String.class)).thenReturn(minimalJson);
+
+        List<PlaceSuggestionDto> results = mockLocationService.suggestPlaces("Unnamed Road");
+
+        assertNotNull(results);
+        assertEquals(1, results.size());
+        PlaceSuggestionDto item = results.get(0);
+        assertEquals("Unnamed Road", item.getMainText());
+        assertEquals(28.5000, item.getLatitude(), 0.001);
+        assertEquals(77.1000, item.getLongitude(), 0.001);
+        assertEquals("", item.getCity());
+        assertEquals("", item.getState());
+        assertEquals("India", item.getCountry());
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // 9. Configurable Country Filter
+    // ──────────────────────────────────────────────────────────────────────────
+
+    @Test
+    void shouldIncludeCountryParamWhenCountryFilterIsConfigured() {
+        String emptyJson = "{\"features\": []}";
+        when(responseSpec.body(String.class)).thenReturn(emptyJson);
+
+        mockProvider.setCountryFilter("in");
+        mockLocationService.suggestPlaces("Cyber City");
+
+        verify(uriSpec).uri(argThat((String url) -> url != null && url.contains("&country=in")));
+    }
+
+    @Test
+    void shouldOmitCountryParamWhenCountryFilterIsBlank() {
+        String emptyJson = "{\"features\": []}";
+        when(responseSpec.body(String.class)).thenReturn(emptyJson);
+
+        mockProvider.setCountryFilter("");
+        mockLocationService.suggestPlaces("Cyber City");
+
+        verify(uriSpec).uri(argThat((String url) -> url != null && !url.contains("&country=")));
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // 10. All 10 Target Indian Places Dynamic Search & Structure Verification
+    // ──────────────────────────────────────────────────────────────────────────
+
+    @Test
+    void shouldDynamicallySearchAllTargetIndianPlacesWithRealCoordinates() {
+        record TargetPlace(String query, String json, double expectedLat, double expectedLon, String expectedCity) {}
+
+        List<TargetPlace> targets = List.of(
+                new TargetPlace("IFFCO Chowk",
+                        """
+                        {"type":"FeatureCollection","features":[{"id":"poi.1","text":"IFFCO Chowk","place_name":"IFFCO Chowk Metro Station, Gurugram, Haryana, India","center":[77.0722,28.4720],"context":[{"id":"place.1","text":"Gurugram"},{"id":"region.1","text":"Haryana"}]}]}
+                        """, 28.4720, 77.0722, "Gurugram"),
+                new TargetPlace("Cyber City Gurgaon",
+                        """
+                        {"type":"FeatureCollection","features":[{"id":"poi.2","text":"Cyber City","place_name":"DLF Cyber City, Gurugram, Haryana, India","center":[77.0895,28.4950],"context":[{"id":"place.1","text":"Gurugram"},{"id":"region.1","text":"Haryana"}]}]}
+                        """, 28.4950, 77.0895, "Gurugram"),
+                new TargetPlace("VIT Bhopal University",
+                        """
+                        {"type":"FeatureCollection","features":[{"id":"poi.3","text":"VIT Bhopal University","place_name":"VIT Bhopal University, Sehore, Madhya Pradesh, India","center":[76.8513,23.0775],"context":[{"id":"place.2","text":"Sehore"},{"id":"region.2","text":"Madhya Pradesh"}]}]}
+                        """, 23.0775, 76.8513, "Sehore"),
+                new TargetPlace("Bhopal Junction",
+                        """
+                        {"type":"FeatureCollection","features":[{"id":"poi.4","text":"Bhopal Junction","place_name":"Bhopal Junction Railway Station, Bhopal, Madhya Pradesh, India","center":[77.4126,23.2599],"context":[{"id":"place.3","text":"Bhopal"},{"id":"region.2","text":"Madhya Pradesh"}]}]}
+                        """, 23.2599, 77.4126, "Bhopal"),
+                new TargetPlace("DB Mall Bhopal",
+                        """
+                        {"type":"FeatureCollection","features":[{"id":"poi.5","text":"DB City Mall","place_name":"DB City Mall, Arera Hills, Bhopal, Madhya Pradesh, India","center":[77.4332,23.2330],"context":[{"id":"place.3","text":"Bhopal"},{"id":"region.2","text":"Madhya Pradesh"}]}]}
+                        """, 23.2330, 77.4332, "Bhopal"),
+                new TargetPlace("Rajwada Palace Indore",
+                        """
+                        {"type":"FeatureCollection","features":[{"id":"poi.6","text":"Rajwada Palace","place_name":"Rajwada Palace, MG Road, Indore, Madhya Pradesh, India","center":[75.8553,22.7186],"context":[{"id":"place.4","text":"Indore"},{"id":"region.2","text":"Madhya Pradesh"}]}]}
+                        """, 22.7186, 75.8553, "Indore"),
+                new TargetPlace("India Gate",
+                        """
+                        {"type":"FeatureCollection","features":[{"id":"poi.7","text":"India Gate","place_name":"India Gate, Rajpath, New Delhi, Delhi, India","center":[77.2295,28.6129],"context":[{"id":"place.5","text":"New Delhi"},{"id":"region.3","text":"Delhi"}]}]}
+                        """, 28.6129, 77.2295, "New Delhi"),
+                new TargetPlace("New Delhi Railway Station",
+                        """
+                        {"type":"FeatureCollection","features":[{"id":"poi.8","text":"New Delhi Railway Station","place_name":"New Delhi Railway Station, Paharganj, New Delhi, Delhi, India","center":[77.2195,28.6429],"context":[{"id":"place.5","text":"New Delhi"},{"id":"region.3","text":"Delhi"}]}]}
+                        """, 28.6429, 77.2195, "New Delhi"),
+                new TargetPlace("Gateway of India",
+                        """
+                        {"type":"FeatureCollection","features":[{"id":"poi.9","text":"Gateway of India","place_name":"Gateway of India, Colaba, Mumbai, Maharashtra, India","center":[72.8347,18.9220],"context":[{"id":"place.6","text":"Mumbai"},{"id":"region.4","text":"Maharashtra"}]}]}
+                        """, 18.9220, 72.8347, "Mumbai"),
+                new TargetPlace("Mumbai Airport",
+                        """
+                        {"type":"FeatureCollection","features":[{"id":"poi.10","text":"Mumbai Airport","place_name":"CSMIA, Sahar, Mumbai, Maharashtra, India","center":[72.8656,19.0896],"context":[{"id":"place.6","text":"Mumbai"},{"id":"region.4","text":"Maharashtra"}]}]}
+                        """, 19.0896, 72.8656, "Mumbai")
+        );
+
+        for (TargetPlace target : targets) {
+            when(responseSpec.body(String.class)).thenReturn(target.json());
+            List<PlaceSuggestionDto> suggestions = mockLocationService.suggestPlaces(target.query());
+            assertNotNull(suggestions, "Suggestions should not be null for: " + target.query());
+            assertFalse(suggestions.isEmpty(), "Suggestions should not be empty for: " + target.query());
+
+            PlaceSuggestionDto place = suggestions.get(0);
+            assertNotNull(place.getPlaceId());
+            assertNotNull(place.getMainText());
+            assertNotNull(place.getName());
+            assertNotNull(place.getFormattedAddress());
+            assertNotNull(place.getFullAddress());
+            assertEquals(target.expectedLat(), place.getLatitude(), 0.001, "Latitude mismatch for: " + target.query());
+            assertEquals(target.expectedLon(), place.getLongitude(), 0.001, "Longitude mismatch for: " + target.query());
+            assertEquals(target.expectedCity(), place.getCity(), "City mismatch for: " + target.query());
+            assertEquals("India", place.getCountry());
+        }
     }
 }
 

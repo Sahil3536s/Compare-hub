@@ -197,11 +197,15 @@ public class GlobalExceptionHandler {
             Exception ex, HttpServletRequest request) {
         log.warn("External provider unavailable or circuit breaker open on path {}: {}", request.getRequestURI(), ex.getMessage());
 
+        String message = (ex.getMessage() != null && (ex.getMessage().contains("Location search") || ex.getMessage().contains("Mapbox")))
+                ? ex.getMessage()
+                : "One or more comparison services are temporarily unavailable. Please retry in a few moments.";
+
         ErrorResponse error = ErrorResponse.builder()
                 .timestamp(Instant.now().toString())
                 .status(HttpStatus.SERVICE_UNAVAILABLE.value())
                 .error(HttpStatus.SERVICE_UNAVAILABLE.getReasonPhrase())
-                .message("One or more comparison services are temporarily unavailable. Please retry in a few moments.")
+                .message(message)
                 .path(request.getRequestURI())
                 .build();
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(error);

@@ -39,11 +39,25 @@ export const LocationAutocomplete = ({
   const inputRef = useRef(null);
   const activeRequestId = useRef(0);
   const isSelectedRef = useRef(false);
+  const debounceTimerRef = useRef(null);
+  const abortControllerRef = useRef(null);
 
   // Sync internal state when parent updates value
   useEffect(() => {
     setInputValue(value || '');
   }, [value]);
+
+  // Cleanup pending timers and abort controller on unmount
+  useEffect(() => {
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, []);
 
   // Click-outside listener
   useEffect(() => {
@@ -73,6 +87,12 @@ export const LocationAutocomplete = ({
       return;
     }
 
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     const currentReq = ++activeRequestId.current;
     setLoading(true);
     setSearchError(null);
@@ -85,14 +105,40 @@ export const LocationAutocomplete = ({
         setHasSearched(true);
         setIsOpen(true);
         setHighlightedIndex(-1);
+        setSearchError(null);
       }
     } catch (err) {
+      if (err.name === 'CanceledError' || err.name === 'AbortError' || err.code === 'ERR_CANCELED') {
+        return;
+      }
       if (currentReq === activeRequestId.current) {
         console.error('Location autocomplete search error:', err);
-        setSearchError('Unable to fetch suggestions. You can enter address directly.');
         setSuggestions([]);
         setHasSearched(true);
         setIsOpen(true);
+        setHighlightedIndex(-1);
+
+        if (!err.response) {
+          // Network failure or backend down
+          setSearchError('Unable to search locations. Please try again.');
+        } else {
+          const status = err.response.status;
+          const msg = (
+            (err.response.data && (err.response.data.message || err.response.data.error)) ||
+            ''
+          ).toLowerCase();
+
+          if (
+            status === 503 &&
+            (msg.includes('token') || msg.includes('config') || msg.includes('access token') || msg.includes('not configured'))
+          ) {
+            setSearchError('Location search service is unavailable.');
+          } else if (status === 503 || status >= 500) {
+            setSearchError('Location search is temporarily unavailable.');
+          } else {
+            setSearchError('Unable to search locations. Please try again.');
+          }
+        }
       }
     } finally {
       if (currentReq === activeRequestId.current) {
@@ -110,21 +156,34 @@ export const LocationAutocomplete = ({
       onChange(val);
     }
 
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+
     if (val.trim().length >= 2) {
       setLoading(true);
-      const timer = setTimeout(() => {
+      debounceTimerRef.current = setTimeout(() => {
         fetchSuggestions(val);
       }, 300);
-      return () => clearTimeout(timer);
     } else {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
       setSuggestions([]);
       setIsOpen(false);
       setLoading(false);
       setHasSearched(false);
+      setSearchError(null);
     }
   };
 
   const handleSelectSuggestion = (item) => {
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
     isSelectedRef.current = true;
     const name = item.name || item.mainText || item.formattedAddress || item.fullAddress || inputValue;
     const formattedAddress = item.formattedAddress || item.fullAddress || item.address || name;
@@ -160,6 +219,12 @@ export const LocationAutocomplete = ({
   };
 
   const handleClear = () => {
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
     setInputValue('');
     setSuggestions([]);
     setIsOpen(false);
@@ -220,7 +285,6 @@ export const LocationAutocomplete = ({
           aria-expanded={isOpen}
           aria-autocomplete="list"
           aria-label={ariaLabel}
-          required={required}
           disabled={disabled}
           value={inputValue}
           onChange={handleInputChange}
@@ -269,7 +333,7 @@ export const LocationAutocomplete = ({
           )}
 
           {searchError && (
-            <div className="p-3 text-xs text-amber-700 bg-amber-50">
+            <div data-testid="location-search-error" className="p-3 text-xs text-amber-700 bg-amber-50">
               {searchError}
             </div>
           )}
