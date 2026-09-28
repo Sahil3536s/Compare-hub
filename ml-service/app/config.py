@@ -1,21 +1,48 @@
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 
 load_dotenv()
 
-# Minimum number of real historical price observations required before ML prediction is attempted
-MIN_HISTORY_POINTS: int = int(os.getenv("MIN_HISTORY_POINTS", "20"))
+APP_DIR = Path(__file__).resolve().parent
+ML_SERVICE_DIR = APP_DIR.parent
+PROJECT_ROOT = ML_SERVICE_DIR.parent
 
-# FastAPI server settings
-ML_SERVICE_HOST: str = os.getenv("ML_SERVICE_HOST", "0.0.0.0")
-ML_SERVICE_PORT: int = int(os.getenv("ML_SERVICE_PORT", "8000"))
+MIN_HISTORY_POINTS: int = int(
+    os.getenv("MIN_HISTORY_POINTS", "20")
+)
 
-# Threshold (in %) for BUY_NOW / WAIT / HOLD recommendation
-# If predicted change is more negative than -threshold%  → WAIT
-# If predicted change is more positive than +threshold%  → BUY_NOW
-# Otherwise → HOLD
-BUY_WAIT_THRESHOLD_PCT: float = float(os.getenv("BUY_WAIT_THRESHOLD_PCT", "2.5"))
+ML_SERVICE_HOST: str = os.getenv(
+    "ML_SERVICE_HOST",
+    "0.0.0.0"
+)
 
-# File paths for saved model and metadata
-MODEL_PATH: str = os.getenv("MODEL_PATH", "models/price_predictor.joblib")
-METADATA_PATH: str = os.getenv("METADATA_PATH", "models/model_metadata.json")
+ML_SERVICE_PORT: int = int(
+    os.getenv("ML_SERVICE_PORT", "8000")
+)
+
+BUY_WAIT_THRESHOLD_PCT: float = float(
+    os.getenv("BUY_WAIT_THRESHOLD_PCT", "2.5")
+)
+
+DEFAULT_MODEL_PATH = (
+    PROJECT_ROOT
+    / "pranav-ml"
+    / "models"
+    / "price_prediction_model.joblib"
+)
+
+MODEL_PATH = Path(
+    os.getenv("MODEL_PATH", str(DEFAULT_MODEL_PATH))
+)
+
+DEFAULT_METADATA_PATH = (
+    PROJECT_ROOT
+    / "pranav-ml"
+    / "reports"
+    / "model_metadata.json"
+)
+
+METADATA_PATH = Path(
+    os.getenv("METADATA_PATH", str(DEFAULT_METADATA_PATH))
+)
