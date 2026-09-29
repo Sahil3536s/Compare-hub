@@ -34,10 +34,9 @@ ChartJS.register(
 
 // Horizon options for hero price meter
 const TIME_HORIZONS = [
-  { label: '2-3 Days', period: '7D' },
+  { label: '2-3 Days', period: '3D' },
   { label: '1 Week', period: '7D' },
   { label: '1 Month', period: '30D' },
-  { label: '3 Months', period: '90D' },
 ];
 
 // Range options for full-width Price History section
@@ -64,7 +63,7 @@ export const ProductDetailsPage = () => {
   const [galleryImages, setGalleryImages] = useState([]);
 
   // Price meter time-horizon state
-  const [meterHorizon, setMeterHorizon] = useState('90D');
+  const [meterHorizon, setMeterHorizon] = useState('30D');
   const [priceMeter, setPriceMeter] = useState(null);
   const [meterLoading, setMeterLoading] = useState(false);
 
@@ -730,33 +729,49 @@ export const ProductDetailsPage = () => {
                 <div className="mt-5 space-y-2">
                   <div className="flex items-center justify-between text-[11px] font-bold text-indigo-300">
                     <span>Buying Opportunity Gauge</span>
-                    {hasSufficientHistory && meterScore != null && (
-                      <span className="text-white font-mono bg-indigo-500/30 px-2 py-0.5 rounded-md border border-indigo-400/30">
-                        {meterScore} / 100
+                    {hasSufficientHistory && meterScore != null ? (
+                      <span className="text-white font-mono bg-indigo-500/30 px-2 py-0.5 rounded-md border border-indigo-400/30 font-bold">
+                        Score: {meterScore} / 100
+                      </span>
+                    ) : (
+                      <span className="text-slate-400 font-normal italic text-[10px]">
+                        Insufficient data
                       </span>
                     )}
                   </div>
 
                   {/* Visual Track Divided into 3 Zones */}
-                  <div className="relative pt-5 pb-1">
+                  <div className="relative pt-6 pb-1">
                     {/* Score Pointer / Indicator */}
                     {hasSufficientHistory && meterScore != null && (
                       <div
                         className="absolute top-0 transform -translate-x-1/2 transition-all duration-500 flex flex-col items-center z-10"
                         style={{ left: `${Math.max(4, Math.min(96, meterScore))}%` }}
                       >
-                        <div className="w-0 h-0 border-l-[5px] border-l-transparent border-r-[5px] border-r-transparent border-t-[6px] border-t-white" />
+                        <span className="text-[10px] font-mono font-black text-indigo-950 bg-white px-1.5 py-0.5 rounded shadow-xs mb-0.5">
+                          {meterScore}
+                        </span>
+                        <div className="w-0 h-0 border-l-[4px] border-l-transparent border-r-[4px] border-r-transparent border-t-[5px] border-t-white" />
                       </div>
                     )}
 
-                    <div className="h-3.5 rounded-full overflow-hidden flex bg-slate-800 shadow-inner">
-                      <div className="w-[35%] bg-rose-500" title="Poor buying time (0-35)" />
-                      <div className="w-[34%] bg-amber-400" title="Average (36-69)" />
-                      <div className="w-[31%] bg-emerald-500" title="Good buying time (70-100)" />
+                    <div className="h-4 rounded-full overflow-hidden flex bg-slate-800/90 shadow-inner border border-white/10 p-0.5">
+                      <div className="w-[35%] bg-gradient-to-r from-rose-500 to-rose-400 rounded-l-full" title="Poor buying time (0-35)" />
+                      <div className="w-[34%] bg-gradient-to-r from-amber-400 to-amber-300" title="Average (36-69)" />
+                      <div className="w-[31%] bg-gradient-to-r from-emerald-400 to-emerald-500 rounded-r-full" title="Good buying time (70-100)" />
+                    </div>
+
+                    {/* Scale Markings: 0 ----------------- 100 */}
+                    <div className="flex justify-between items-center text-[10px] font-mono text-slate-400 mt-1 px-1">
+                      <span>0</span>
+                      <span className="text-[9px] tracking-widest text-slate-500">──────────</span>
+                      <span>50</span>
+                      <span className="text-[9px] tracking-widest text-slate-500">──────────</span>
+                      <span>100</span>
                     </div>
 
                     {/* Zone Labels */}
-                    <div className="flex justify-between items-center text-[10px] font-bold text-slate-300 mt-1.5 px-0.5">
+                    <div className="flex justify-between items-center text-[10px] font-bold text-slate-300 mt-1 px-0.5">
                       <span className="text-rose-400">Poor buying time</span>
                       <span className="text-amber-300">Average</span>
                       <span className="text-emerald-400">Good buying time</span>
@@ -780,7 +795,7 @@ export const ProductDetailsPage = () => {
                   <p className="text-xs text-slate-300 leading-relaxed pt-1">
                     {hasSufficientHistory
                       ? (priceMeter.summaryText || priceMeter.advice)
-                      : 'Not enough price history yet to calculate Price Meter.'}
+                      : 'Not enough price history yet'}
                   </p>
                 </div>
               </div>

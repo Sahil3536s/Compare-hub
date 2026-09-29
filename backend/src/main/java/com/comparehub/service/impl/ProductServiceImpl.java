@@ -154,7 +154,7 @@ public class ProductServiceImpl implements ProductService {
         // 4. Price Meter Calculation
         com.comparehub.dto.PriceMeterDto priceMeter = null;
         try {
-            priceMeter = priceHistoryService.calculatePriceMeter(id, bestPrice, "90D");
+            priceMeter = priceHistoryService.calculatePriceMeter(id, bestPrice, "30D");
         } catch (Exception e) {
             log.warn("Failed to calculate price meter for product {}: {}", id, e.getMessage());
         }

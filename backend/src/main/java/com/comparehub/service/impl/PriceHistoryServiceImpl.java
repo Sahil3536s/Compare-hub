@@ -206,8 +206,12 @@ public class PriceHistoryServiceImpl implements PriceHistoryService {
     @Override
     @Transactional(readOnly = true)
     public com.comparehub.dto.PriceMeterDto calculatePriceMeter(Long productId, BigDecimal currentPrice, String period) {
-        String sanitizedPeriod = period != null ? period.toUpperCase().trim() : "90D";
+        String sanitizedPeriod = period != null ? period.toUpperCase().trim() : "30D";
+        if ("2-3 DAYS".equals(sanitizedPeriod) || "2-3D".equals(sanitizedPeriod) || "3D".equals(sanitizedPeriod)) {
+            sanitizedPeriod = "3D";
+        }
         Integer days = switch (sanitizedPeriod) {
+            case "3D" -> 3;
             case "7D" -> 7;
             case "30D" -> 30;
             case "90D" -> 90;
@@ -215,8 +219,8 @@ public class PriceHistoryServiceImpl implements PriceHistoryService {
             case "1Y" -> 365;
             case "ALL" -> null;
             default -> {
-                sanitizedPeriod = "90D";
-                yield 90;
+                sanitizedPeriod = "30D";
+                yield 30;
             }
         };
 
@@ -288,13 +292,14 @@ public class PriceHistoryServiceImpl implements PriceHistoryService {
         String summaryText;
 
         String periodLabel = switch (sanitizedPeriod) {
+            case "3D" -> "3-day";
             case "7D" -> "7-day";
             case "30D" -> "30-day";
             case "90D" -> "90-day";
             case "6M" -> "6-month";
             case "1Y" -> "1-year";
             case "ALL" -> "historical";
-            default -> "90-day";
+            default -> "30-day";
         };
 
         double minVal = min.doubleValue();
