@@ -15,6 +15,8 @@ public interface ProductService {
 
     ProductResponseDto getProductById(Long id);
 
+    com.comparehub.dto.CanonicalProductDetailDto getCanonicalProductDetail(Long id);
+
     List<ProductResponseDto> getAllProducts();
 
     Page<ProductResponseDto> getAllProducts(Pageable pageable);

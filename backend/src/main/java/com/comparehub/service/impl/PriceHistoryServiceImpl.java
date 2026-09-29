@@ -37,6 +37,10 @@ public class PriceHistoryServiceImpl implements PriceHistoryService {
     private final DealQualityService dealQualityService;
     private final PurchaseTimingService purchaseTimingService;
 
+    public PriceHistoryServiceImpl(ProductPriceHistoryRepository priceHistoryRepository, ProductRepository productRepository) {
+        this(priceHistoryRepository, productRepository, null, null);
+    }
+
     @Override
     @Transactional
     public void recordPriceIfChanged(Product product, String merchant, BigDecimal price, String currency) {
@@ -76,19 +80,29 @@ public class PriceHistoryServiceImpl implements PriceHistoryService {
         Product product = productRepository.findById(productId)
                 .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + productId));
 
-        String sanitizedPeriod = period != null ? period.toUpperCase().trim() : "30D";
-        int days = switch (sanitizedPeriod) {
+        String sanitizedPeriod = period != null ? period.toUpperCase().trim() : "90D";
+        Integer days = switch (sanitizedPeriod) {
             case "7D" -> 7;
+            case "30D" -> 30;
             case "90D" -> 90;
+            case "6M" -> 180;
+            case "1Y" -> 365;
+            case "ALL" -> null;
             default -> {
-                sanitizedPeriod = "30D";
-                yield 30;
+                sanitizedPeriod = "90D";
+                yield 90;
             }
         };
 
-        Instant since = Instant.now().minus(days, ChronoUnit.DAYS);
-        List<ProductPriceHistory> history = priceHistoryRepository
-                .findByProductIdAndRecordedAtGreaterThanEqualOrderByRecordedAtAsc(productId, since);
+        List<ProductPriceHistory> history;
+        if (days != null) {
+            Instant since = Instant.now().minus(days, ChronoUnit.DAYS);
+            history = priceHistoryRepository
+                    .findByProductIdAndRecordedAtGreaterThanEqualOrderByRecordedAtAsc(productId, since);
+        } else {
+            history = priceHistoryRepository
+                    .findByProductIdOrderByRecordedAtAsc(productId);
+        }
 
         List<PricePointDto> pricePoints = new ArrayList<>();
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd").withZone(ZoneId.systemDefault());
@@ -172,8 +186,12 @@ public class PriceHistoryServiceImpl implements PriceHistoryService {
 
         String periodLabel = switch (period) {
             case "7D" -> "7-day";
+            case "30D" -> "30-day";
             case "90D" -> "90-day";
-            default -> "30-day";
+            case "6M" -> "6-month";
+            case "1Y" -> "1-year";
+            case "ALL" -> "historical";
+            default -> "90-day";
         };
 
         if (diffPct <= -1.5) {
@@ -183,5 +201,135 @@ public class PriceHistoryServiceImpl implements PriceHistoryService {
         } else {
             return String.format("Current price is stable and matches the %s average.", periodLabel);
         }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public com.comparehub.dto.PriceMeterDto calculatePriceMeter(Long productId, BigDecimal currentPrice, String period) {
+        String sanitizedPeriod = period != null ? period.toUpperCase().trim() : "90D";
+        Integer days = switch (sanitizedPeriod) {
+            case "7D" -> 7;
+            case "30D" -> 30;
+            case "90D" -> 90;
+            case "6M" -> 180;
+            case "1Y" -> 365;
+            case "ALL" -> null;
+            default -> {
+                sanitizedPeriod = "90D";
+                yield 90;
+            }
+        };
+
+        List<ProductPriceHistory> history;
+        if (days != null) {
+            Instant since = Instant.now().minus(days, ChronoUnit.DAYS);
+            history = priceHistoryRepository
+                    .findByProductIdAndRecordedAtGreaterThanEqualOrderByRecordedAtAsc(productId, since);
+        } else {
+            history = priceHistoryRepository
+                    .findByProductIdOrderByRecordedAtAsc(productId);
+        }
+
+        if (history == null || history.isEmpty()) {
+            return com.comparehub.dto.PriceMeterDto.builder()
+                    .classification("INSUFFICIENT_DATA")
+                    .classificationLabel("Insufficient Data")
+                    .currentPrice(currentPrice)
+                    .period(sanitizedPeriod)
+                    .observationsCount(0)
+                    .hasSufficientData(false)
+                    .summaryText("Not enough price history yet to calculate Price Meter.")
+                    .build();
+        }
+
+        List<BigDecimal> prices = history.stream()
+                .map(ProductPriceHistory::getPrice)
+                .filter(Objects::nonNull)
+                .sorted()
+                .collect(Collectors.toList());
+
+        if (prices.isEmpty()) {
+            return com.comparehub.dto.PriceMeterDto.builder()
+                    .classification("INSUFFICIENT_DATA")
+                    .classificationLabel("Insufficient Data")
+                    .currentPrice(currentPrice)
+                    .period(sanitizedPeriod)
+                    .observationsCount(0)
+                    .hasSufficientData(false)
+                    .summaryText("Not enough price history yet to calculate Price Meter.")
+                    .build();
+        }
+
+        BigDecimal effectiveCurrent = currentPrice != null ? currentPrice : prices.get(prices.size() - 1);
+        BigDecimal min = prices.get(0);
+        BigDecimal max = prices.get(prices.size() - 1);
+
+        BigDecimal sum = prices.stream().reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal avg = sum.divide(BigDecimal.valueOf(prices.size()), 2, RoundingMode.HALF_UP);
+
+        BigDecimal median;
+        int n = prices.size();
+        if (n % 2 == 1) {
+            median = prices.get(n / 2);
+        } else {
+            median = prices.get(n / 2 - 1).add(prices.get(n / 2))
+                    .divide(BigDecimal.valueOf(2), 2, RoundingMode.HALF_UP);
+        }
+
+        double currVal = effectiveCurrent.doubleValue();
+        double avgVal = avg.doubleValue();
+        double diffPct = avgVal > 0 ? ((currVal - avgVal) / avgVal) * 100.0 : 0.0;
+        double roundedDiffPct = Math.round(diffPct * 10.0) / 10.0;
+
+        String classification;
+        String classificationLabel;
+        String summaryText;
+
+        String periodLabel = switch (sanitizedPeriod) {
+            case "7D" -> "7-day";
+            case "30D" -> "30-day";
+            case "90D" -> "90-day";
+            case "6M" -> "6-month";
+            case "1Y" -> "1-year";
+            case "ALL" -> "historical";
+            default -> "90-day";
+        };
+
+        if (diffPct <= -10.0 || effectiveCurrent.compareTo(min) <= 0) {
+            classification = "EXCELLENT_DEAL";
+            classificationLabel = "Excellent Deal";
+            summaryText = String.format("Current price is %.1f%% lower than its %s average.", Math.abs(roundedDiffPct), periodLabel);
+        } else if (diffPct <= -3.0) {
+            classification = "GOOD_PRICE";
+            classificationLabel = "Good Price";
+            summaryText = String.format("Current price is %.1f%% lower than its %s average.", Math.abs(roundedDiffPct), periodLabel);
+        } else if (diffPct <= 3.0) {
+            classification = "AVERAGE_PRICE";
+            classificationLabel = "Average Price";
+            summaryText = String.format("Current price matches its %s average.", periodLabel);
+        } else if (diffPct <= 10.0) {
+            classification = "ABOVE_AVERAGE";
+            classificationLabel = "Above Average";
+            summaryText = String.format("Current price is %.1f%% higher than its %s average.", roundedDiffPct, periodLabel);
+        } else {
+            classification = "HIGH_PRICE";
+            classificationLabel = "High Price";
+            summaryText = String.format("Current price is %.1f%% higher than its %s average.", roundedDiffPct, periodLabel);
+        }
+
+        return com.comparehub.dto.PriceMeterDto.builder()
+                .classification(classification)
+                .classificationLabel(classificationLabel)
+                .currentPrice(effectiveCurrent)
+                .historicalMinimum(min)
+                .historicalMaximum(max)
+                .historicalAverage(avg)
+                .historicalMedian(median)
+                .percentDifferenceFromAverage(roundedDiffPct)
+                .summaryText(summaryText)
+                .period(sanitizedPeriod)
+                .observationsCount(prices.size())
+                .hasSufficientData(true)
+                .build();
     }
 }

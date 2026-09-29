@@ -1,8 +1,10 @@
 package com.comparehub.controller;
 
+import com.comparehub.dto.CanonicalProductDetailDto;
 import com.comparehub.dto.ProductComparisonResponseDto;
 import com.comparehub.dto.ProductSearchRequestDto;
 import com.comparehub.service.ProductComparisonService;
+import com.comparehub.service.ProductService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -18,6 +20,7 @@ import java.util.*;
 public class ProductComparisonController {
 
     private final ProductComparisonService productComparisonService;
+    private final ProductService productService;
 
     private static final Set<String> RESERVED_PARAMS = Set.of(
             "q", "page", "pagesize", "merchant", "brand", "category",
@@ -94,6 +97,13 @@ public class ProductComparisonController {
                             sanitizedQuery, merchant, brand, category, minPrice, maxPrice, inStock, sortBy);
         }
         return ResponseEntity.ok(result);
+    }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<CanonicalProductDetailDto> getProductDetail(@PathVariable("id") Long id) {
+        log.info("Fetching canonical product details for product id: {}", id);
+        CanonicalProductDetailDto detail = productService.getCanonicalProductDetail(id);
+        return ResponseEntity.ok(detail);
     }
 
     @GetMapping("/suggest")

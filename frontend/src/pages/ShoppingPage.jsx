@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { searchProducts } from '../services/productService';
 import SearchBar from '../components/SearchBar';
 import ProductCard from '../components/shopping/ProductCard';
+import CanonicalProductCard from '../components/shopping/CanonicalProductCard';
 import ProductFilterPanel from '../components/shopping/ProductFilterPanel';
 import PriceHistoryModal from '../components/PriceHistoryModal';
 import ProductComparisonModal from '../components/ProductComparisonModal';
@@ -64,6 +65,8 @@ export const ShoppingPage = () => {
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
 
   const [offers, setOffers] = useState([]);
+  const [canonicalProducts, setCanonicalProducts] = useState([]);
+  const [viewMode, setViewMode] = useState('canonical'); // 'canonical' | 'all_offers'
   const [totalOffers, setTotalOffers] = useState(0);
   const [cheapestPrice, setCheapestPrice] = useState(null);
   const [cheapestMerchant, setCheapestMerchant] = useState(null);
@@ -196,9 +199,13 @@ export const ShoppingPage = () => {
 
       if (append) {
         setOffers((prev) => [...prev, ...(data.offers || [])]);
+        if (data.canonicalProducts && data.canonicalProducts.length > 0) {
+          setCanonicalProducts((prev) => [...prev, ...data.canonicalProducts]);
+        }
         setPage(pageNum);
       } else {
         setOffers(data.offers || []);
+        setCanonicalProducts(data.canonicalProducts || []);
         setPage(1);
         setAvailableBrands(data.availableBrands || []);
         setAvailableCategories(data.availableCategories || []);
@@ -574,23 +581,66 @@ export const ShoppingPage = () => {
             </div>
           </div>
 
+          {/* View Mode Toggle: Canonical Products vs All Store Offers */}
+          {!loading && !error && canonicalProducts.length > 0 && (
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50 border border-slate-200/80 p-2.5 rounded-2xl">
+              <div className="flex items-center gap-1.5 bg-white p-1 rounded-xl shadow-2xs border border-slate-200 text-xs font-bold">
+                <button
+                  type="button"
+                  onClick={() => setViewMode('canonical')}
+                  className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${
+                    viewMode === 'canonical'
+                      ? 'bg-indigo-600 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  📦 Unified Models ({canonicalProducts.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('all_offers')}
+                  className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${
+                    viewMode === 'all_offers'
+                      ? 'bg-indigo-600 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  🏪 All Store Offers ({offers.length})
+                </button>
+              </div>
+              <span className="text-xs text-slate-500 font-medium px-2">
+                {viewMode === 'canonical'
+                  ? 'Showing canonical models with store price comparison'
+                  : 'Showing individual store listings across all merchants'}
+              </span>
+            </div>
+          )}
+
           {/* Product Feed */}
           {loading ? (
             <LoadingSkeleton type="product-card" count={6} />
           ) : error ? (
             <ErrorState title="Shopping Engine Error" message={error} onRetry={fetchOffers} />
-          ) : offers.length === 0 ? (
+          ) : (viewMode === 'canonical' && canonicalProducts.length > 0 ? canonicalProducts.length : offers.length) === 0 ? (
             <EmptyState
               title="No Products Found"
               description="We couldn't find any products matching your filters. Try adjusting your query or price range."
               actionText="Clear All Filters"
               onAction={resetFilters}
             />
+          ) : viewMode === 'canonical' && canonicalProducts.length > 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5 sm:gap-6">
+              {canonicalProducts.map((product, idx) => (
+                <CanonicalProductCard
+                  key={product.canonicalKey || product.productId || idx}
+                  product={product}
+                />
+              ))}
+            </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5 sm:gap-6">
               {offers.map((offer, idx) => {
                 const cardKey = `${offer.merchant}-${offer.productName}-${idx}`;
-                const isCompared = comparedOfferKeys.includes(`${offer.merchant}-${offer.productName}`);
                 return (
                   <ProductCard
                     key={cardKey}

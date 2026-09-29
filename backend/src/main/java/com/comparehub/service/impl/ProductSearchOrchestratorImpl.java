@@ -25,6 +25,7 @@ public class ProductSearchOrchestratorImpl implements ProductSearchOrchestrator 
     private final ProductNormalizationService normalizationService;
     private final ProductRankingService rankingService;
     private final ComparisonRecommendationService recommendationService;
+    private final ProductPersistenceService productPersistenceService;
     private final Executor providerExecutor;
 
     private static final Set<String> STOP_WORDS = Set.of(
@@ -44,12 +45,14 @@ public class ProductSearchOrchestratorImpl implements ProductSearchOrchestrator 
             ProductNormalizationService normalizationService,
             ProductRankingService rankingService,
             ComparisonRecommendationService recommendationService,
+            ProductPersistenceService productPersistenceService,
             @Qualifier("providerExecutor") Executor providerExecutor) {
         this.providers = providers;
         this.productMatchingService = productMatchingService;
         this.normalizationService = normalizationService;
         this.rankingService = rankingService;
         this.recommendationService = recommendationService;
+        this.productPersistenceService = productPersistenceService;
         this.providerExecutor = providerExecutor;
     }
 
@@ -58,8 +61,28 @@ public class ProductSearchOrchestratorImpl implements ProductSearchOrchestrator 
             ProductMatchingService productMatchingService,
             ProductNormalizationService normalizationService,
             ProductRankingService rankingService,
+            ComparisonRecommendationService recommendationService,
+            ProductPersistenceService productPersistenceService) {
+        this(providers, productMatchingService, normalizationService, rankingService, recommendationService, productPersistenceService, ForkJoinPool.commonPool());
+    }
+
+    public ProductSearchOrchestratorImpl(
+            List<ProductProvider> providers,
+            ProductMatchingService productMatchingService,
+            ProductNormalizationService normalizationService,
+            ProductRankingService rankingService,
+            ComparisonRecommendationService recommendationService,
+            @Qualifier("providerExecutor") Executor providerExecutor) {
+        this(providers, productMatchingService, normalizationService, rankingService, recommendationService, null, providerExecutor);
+    }
+
+    public ProductSearchOrchestratorImpl(
+            List<ProductProvider> providers,
+            ProductMatchingService productMatchingService,
+            ProductNormalizationService normalizationService,
+            ProductRankingService rankingService,
             ComparisonRecommendationService recommendationService) {
-        this(providers, productMatchingService, normalizationService, rankingService, recommendationService, ForkJoinPool.commonPool());
+        this(providers, productMatchingService, normalizationService, rankingService, recommendationService, null, ForkJoinPool.commonPool());
     }
 
     @Override
@@ -120,7 +143,15 @@ public class ProductSearchOrchestratorImpl implements ProductSearchOrchestrator 
         }
 
         // 4. Product Matching & Canonical Offer Grouping
-        List<NormalizedProductOfferDto> matchedOffers = productMatchingService.enrichWithMatching(normalized);
+        List<CanonicalProductGroupDto> canonicalGroups = productMatchingService.matchAndGroupOffers(normalized);
+        if (productPersistenceService != null) {
+            try {
+                productPersistenceService.persistCanonicalGroupsAndOffers(canonicalGroups);
+            } catch (Exception e) {
+                log.warn("Error persisting canonical groups: {}", e.getMessage());
+            }
+        }
+        List<NormalizedProductOfferDto> matchedOffers = normalized;
 
         // 5. Dynamic Facet Extraction (Categories, Brands, Merchants, and dynamic attributes)
         List<String> availableCategories = matchedOffers.stream()
@@ -208,12 +239,39 @@ public class ProductSearchOrchestratorImpl implements ProductSearchOrchestrator 
         }
 
 
+        List<CanonicalProductGroupDto> activeCanonicalGroups = canonicalGroups.stream()
+                .filter(group -> group.getOffers() != null && group.getOffers().stream().anyMatch(filtered::contains))
+                .map(group -> {
+                    List<NormalizedProductOfferDto> grpOffers = group.getOffers().stream()
+                            .filter(filtered::contains)
+                            .collect(Collectors.toList());
+                    return CanonicalProductGroupDto.builder()
+                            .productId(group.getProductId())
+                            .canonicalKey(group.getCanonicalKey())
+                            .canonicalTitle(group.getCanonicalTitle())
+                            .imageUrl(group.getImageUrl())
+                            .brand(group.getBrand())
+                            .category(group.getCategory())
+                            .rating(group.getRating())
+                            .reviewCount(group.getReviewCount())
+                            .attributes(group.getAttributes())
+                            .lowestPrice(grpOffers.stream().map(NormalizedProductOfferDto::getPrice).filter(Objects::nonNull).min(Comparator.naturalOrder()).orElse(group.getLowestPrice()))
+                            .highestPrice(grpOffers.stream().map(NormalizedProductOfferDto::getPrice).filter(Objects::nonNull).max(Comparator.naturalOrder()).orElse(group.getHighestPrice()))
+                            .cheapestMerchant(group.getCheapestMerchant())
+                            .priceSpread(group.getPriceSpread())
+                            .offers(grpOffers)
+                            .build();
+                })
+                .filter(group -> !group.getOffers().isEmpty())
+                .collect(Collectors.toList());
+
         return ProductComparisonResponseDto.builder()
                 .query(rawQuery)
                 .totalOffers(totalOffers)
                 .cheapestPrice(cheapestPrice)
                 .cheapestMerchant(cheapestMerchant)
                 .offers(pagedOffers)
+                .canonicalProducts(activeCanonicalGroups.isEmpty() ? canonicalGroups : activeCanonicalGroups)
                 .aiRecommendation(recommendation)
                 .rankingSummary(rankingSummary)
                 .status(status)

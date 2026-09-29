@@ -18,6 +18,8 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
 
     List<Product> findByNameContainingIgnoreCase(String keyword);
 
+    Optional<Product> findFirstByNameIgnoreCase(String name);
+
     @Query("SELECT DISTINCT p FROM Product p LEFT JOIN FETCH p.offers WHERE p.id = :id")
     Optional<Product> findByIdWithOffers(@Param("id") Long id);
 

@@ -20,6 +20,7 @@ import DecisionEnginePage from './pages/DecisionEnginePage';
 import NotFoundPage from './pages/NotFoundPage';
 import { ROUTES } from './utils/constants';
 import PriceHistoryPage from './pages/PriceHistoryPage';
+import ProductDetailsPage from './pages/ProductDetailsPage';
 
 function App() {
   return (
@@ -31,6 +32,7 @@ function App() {
               <Route index element={<HomePage />} />
               <Route path="shopping" element={<ShoppingPage />} />
               <Route path="search" element={<ShoppingPage />} />
+              <Route path="products/:productId" element={<ProductDetailsPage />} />
               <Route path="smart-cart" element={<SmartCartPage />} />
               <Route path="smart-journey" element={<SmartJourneyPage />} />
               <Route path="budget" element={<BudgetAssistantPage />} />

@@ -273,6 +273,15 @@ public class ProductMatchingServiceImpl implements ProductMatchingService {
             if (matchedGroup != null) {
                 matchedGroup.getOffers().add(offer);
                 offer.setCanonicalKey(matchedGroup.getCanonicalKey());
+                if ((matchedGroup.getImageUrl() == null || matchedGroup.getImageUrl().isBlank()) && offer.getImageUrl() != null) {
+                    matchedGroup.setImageUrl(offer.getImageUrl());
+                }
+                if (matchedGroup.getRating() == null && offer.getRating() != null) {
+                    matchedGroup.setRating(offer.getRating());
+                }
+                if (matchedGroup.getReviewCount() == null && offer.getReviewCount() != null) {
+                    matchedGroup.setReviewCount(offer.getReviewCount());
+                }
             } else {
                 ProductAttributesDto attr = offer.getStructuredAttributes() != null ? offer.getStructuredAttributes()
                         : attributeExtractor.extractAttributes(offer);
@@ -280,6 +289,11 @@ public class ProductMatchingServiceImpl implements ProductMatchingService {
                         .canonicalKey(attr.getCanonicalKey())
                         .canonicalTitle(generateCanonicalTitle(attr, offer.getTitle()))
                         .attributes(attr)
+                        .imageUrl(offer.getImageUrl())
+                        .brand(attr.getBrand() != null ? attr.getBrand() : offer.getBrand())
+                        .category(offer.getCategory() != null ? offer.getCategory() : "Electronics")
+                        .rating(offer.getRating())
+                        .reviewCount(offer.getReviewCount())
                         .offers(new ArrayList<>(List.of(offer)))
                         .build();
                 groups.add(newGroup);

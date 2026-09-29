@@ -15,8 +15,14 @@ import java.util.List;
 @AllArgsConstructor
 public class CanonicalProductGroupDto {
 
+    private Long productId;
     private String canonicalKey;
     private String canonicalTitle;
+    private String brand;
+    private String category;
+    private String imageUrl;
+    private Double rating;
+    private Integer reviewCount;
     private ProductAttributesDto attributes;
 
     @Builder.Default

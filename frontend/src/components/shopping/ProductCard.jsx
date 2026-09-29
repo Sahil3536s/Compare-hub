@@ -76,12 +76,20 @@ export const ProductCard = ({ offer }) => {
         )}
       </div>
 
-      <div className="mt-4 pt-2 border-t">
+      <div className="mt-4 pt-2 border-t flex items-center gap-2">
+        {productId && (
+          <a
+            href={`/products/${productId}`}
+            className="flex-1 text-center bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs sm:text-sm font-semibold py-2 rounded-lg transition"
+          >
+            Compare Stores
+          </a>
+        )}
         <a
           href={viewDealUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="block w-full text-center bg-indigo-600 text-white py-2 rounded hover:bg-indigo-700 transition"
+          className="flex-1 text-center bg-indigo-600 text-white text-xs sm:text-sm font-semibold py-2 rounded-lg hover:bg-indigo-700 transition"
         >
           View Deal
         </a>

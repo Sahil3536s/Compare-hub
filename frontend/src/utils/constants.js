@@ -18,6 +18,7 @@ export const ROUTES = {
   SAVINGS: '/savings',
   HISTORY: '/history',
   NOTIFICATIONS: '/notifications',
+  PRODUCT_DETAILS: '/products/:productId',
 };
 
 export const PRODUCT_CATEGORIES = [

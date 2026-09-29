@@ -10,4 +10,6 @@ public interface PriceHistoryService {
     void recordPriceIfChanged(Product product, String merchant, BigDecimal price, String currency);
 
     ProductPriceHistoryResponseDto getPriceHistory(Long productId, String period);
+
+    com.comparehub.dto.PriceMeterDto calculatePriceMeter(Long productId, BigDecimal currentPrice, String period);
 }

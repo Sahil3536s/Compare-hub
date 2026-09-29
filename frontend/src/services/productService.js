@@ -69,8 +69,14 @@ export const getProductPriceHistory = async (productId, period = '30D') => {
   return response.data;
 };
 
+export const getProductDetails = async (productId) => {
+  const response = await apiClient.get(`/products/${productId}`);
+  return response.data;
+};
+
 export default {
   searchProducts,
   getSearchSuggestions,
   getProductPriceHistory,
+  getProductDetails,
 };

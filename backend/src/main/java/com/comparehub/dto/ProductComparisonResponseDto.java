@@ -22,6 +22,8 @@ public class ProductComparisonResponseDto {
     private String cheapestMerchant;
     @Builder.Default
     private List<NormalizedProductOfferDto> offers = new ArrayList<>();
+    @Builder.Default
+    private List<CanonicalProductGroupDto> canonicalProducts = new ArrayList<>();
     private AiRecommendationDto aiRecommendation;
     private RankingSummaryDto rankingSummary;
 

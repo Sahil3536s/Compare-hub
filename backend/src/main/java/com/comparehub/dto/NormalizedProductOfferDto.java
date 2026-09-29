@@ -13,11 +13,16 @@ import java.math.BigDecimal;
 @AllArgsConstructor
 public class NormalizedProductOfferDto {
 
+    private Long productId;
     private String productName;
     private String title;
     private String merchant;
     private String provider;
     private String externalProductId;
+    @Builder.Default
+    private String dataSource = "LIVE"; // LIVE or DEMO
+    @Builder.Default
+    private Boolean live = true;
     private BigDecimal price; // Listed / Base Price
     private BigDecimal currentPrice;
     private BigDecimal originalPrice;
@@ -185,6 +190,19 @@ public class NormalizedProductOfferDto {
     public void setDelivery(String d) {
         this.delivery = d;
         if (this.deliveryEstimate == null) this.deliveryEstimate = d;
+    }
+
+    public String getDeliveryText() {
+        return delivery != null && !delivery.isBlank() ? delivery : deliveryEstimate;
+    }
+
+    public void setDeliveryText(String dt) {
+        this.delivery = dt;
+        if (this.deliveryEstimate == null) this.deliveryEstimate = dt;
+    }
+
+    public boolean isLive() {
+        return Boolean.TRUE.equals(this.live);
     }
 
     public Boolean getAvailability() {
