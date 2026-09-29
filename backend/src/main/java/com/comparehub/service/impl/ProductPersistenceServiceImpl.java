@@ -85,11 +85,10 @@ public class ProductPersistenceServiceImpl implements ProductPersistenceService 
 
                         merchantOfferRepository.save(targetOffer);
 
-                        // Only record price history for authentic LIVE offers (never demo data)
-                        boolean isLiveOffer = offerDto.isLive() ||
-                                (offerDto.getDataSource() != null && !"DEMO".equalsIgnoreCase(offerDto.getDataSource()));
+                        // Strictly exclude demo data: only record price history for authentic LIVE offers
+                        boolean isDemo = !offerDto.isLive() || "DEMO".equalsIgnoreCase(offerDto.getDataSource());
 
-                        if (isLiveOffer && price.compareTo(BigDecimal.ZERO) > 0) {
+                        if (!isDemo && price.compareTo(BigDecimal.ZERO) > 0) {
                             String currency = offerDto.getCurrency() != null ? offerDto.getCurrency() : "INR";
                             priceHistoryService.recordPriceIfChanged(product, offerDto.getMerchant(), price, currency);
                         }

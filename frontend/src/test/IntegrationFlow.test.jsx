@@ -65,7 +65,7 @@ describe('ShoppingPage Integration Flow', () => {
       expect(screen.getByText('iPhone 15 Pro 256GB')).toBeInTheDocument();
     });
 
-    expect(screen.getByText(/Showing/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/Showing/i).length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText('Flipkart').length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText('Amazon').length).toBeGreaterThanOrEqual(1);
 

@@ -21,35 +21,39 @@ import NotFoundPage from './pages/NotFoundPage';
 import { ROUTES } from './utils/constants';
 import PriceHistoryPage from './pages/PriceHistoryPage';
 import ProductDetailsPage from './pages/ProductDetailsPage';
+import ScrollToTop from './components/ScrollToTop';
+import ErrorBoundary from './components/ErrorBoundary';
 
 function App() {
   return (
     <AuthProvider>
       <AppProvider>
         <BrowserRouter>
-          <Routes>
-            <Route path={ROUTES.HOME} element={<MainLayout />}>
-              <Route index element={<HomePage />} />
-              <Route path="shopping" element={<ShoppingPage />} />
-              <Route path="search" element={<ShoppingPage />} />
-              <Route path="products/:productId" element={<ProductDetailsPage />} />
-              <Route path="smart-cart" element={<SmartCartPage />} />
-              <Route path="smart-journey" element={<SmartJourneyPage />} />
-              <Route path="budget" element={<BudgetAssistantPage />} />
-              <Route path="decision-engine" element={<DecisionEnginePage />} />
-              <Route path="flights" element={<FlightsPage />} />
-              <Route path="rides" element={<RidesPage />} />
-              <Route path="alerts" element={<AlertsPage />} />
-              <Route path="saved" element={<SavedPage />} />
-              <Route path="dashboard" element={<DashboardPage />} />
-              <Route path="savings" element={<SavingsDashboardPage />} />
-              <Route path="history" element={<HistoryPage />} />
-              <Route path="notifications" element={<NotificationsPage />} />
-            <Route path="price-history/:productId" element={<PriceHistoryPage />} />
-            <Route path="*" element={<NotFoundPage />} />
-              <Route path="*" element={<NotFoundPage />} />
-            </Route>
-          </Routes>
+          <ScrollToTop />
+          <ErrorBoundary>
+            <Routes>
+              <Route path={ROUTES.HOME} element={<MainLayout />}>
+                <Route index element={<HomePage />} />
+                <Route path="shopping" element={<ShoppingPage />} />
+                <Route path="search" element={<ShoppingPage />} />
+                <Route path="products/:productId" element={<ProductDetailsPage />} />
+                <Route path="smart-cart" element={<SmartCartPage />} />
+                <Route path="smart-journey" element={<SmartJourneyPage />} />
+                <Route path="budget" element={<BudgetAssistantPage />} />
+                <Route path="decision-engine" element={<DecisionEnginePage />} />
+                <Route path="flights" element={<FlightsPage />} />
+                <Route path="rides" element={<RidesPage />} />
+                <Route path="alerts" element={<AlertsPage />} />
+                <Route path="saved" element={<SavedPage />} />
+                <Route path="dashboard" element={<DashboardPage />} />
+                <Route path="savings" element={<SavingsDashboardPage />} />
+                <Route path="history" element={<HistoryPage />} />
+                <Route path="notifications" element={<NotificationsPage />} />
+                <Route path="price-history/:productId" element={<PriceHistoryPage />} />
+                <Route path="*" element={<NotFoundPage />} />
+              </Route>
+            </Routes>
+          </ErrorBoundary>
         </BrowserRouter>
       </AppProvider>
     </AuthProvider>

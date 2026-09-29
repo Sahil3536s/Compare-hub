@@ -7,8 +7,10 @@ import DemoBadge from './DemoBadge';
  *  - offer: NormalizedProductOfferDto (see hook typings)
  */
 export const ProductCard = ({ offer }) => {
+  if (!offer) return null;
+
   const {
-    productName,
+    productName = 'Unnamed Product',
     brand,
     merchant,
     price,
@@ -24,9 +26,12 @@ export const ProductCard = ({ offer }) => {
     productId,
   } = offer;
 
-  const hasDiscount = originalPrice && originalPrice > price;
+  const numPrice = Number(price);
+  const safePrice = !isNaN(numPrice) ? numPrice : 0;
+  const numOriginal = originalPrice != null && !isNaN(Number(originalPrice)) ? Number(originalPrice) : null;
+  const hasDiscount = numOriginal != null && numOriginal > safePrice && safePrice > 0;
 
-  const viewDealUrl = offer.url || '#'; // fallback if no URL provided
+  const viewDealUrl = offer.url || offer.productUrl || '#';
 
   return (
     <div className="border rounded-lg shadow-sm p-4 bg-white flex flex-col h-full">
@@ -42,7 +47,7 @@ export const ProductCard = ({ offer }) => {
       </div>
 
       <div className="flex-1">
-        {attributes && Object.entries(attributes).map(([key, val]) => (
+        {attributes && typeof attributes === 'object' && Object.entries(attributes).map(([key, val]) => (
           <p key={key} className="text-xs text-gray-600">
             <strong>{key}:</strong> {val}
           </p>
@@ -51,16 +56,16 @@ export const ProductCard = ({ offer }) => {
 
       <div className="mt-3">
         <div className="flex items-baseline space-x-2">
-          <span className="text-xl font-bold text-primary-600">${price.toFixed(2)}</span>
+          <span className="text-xl font-bold text-indigo-600">₹{safePrice.toLocaleString('en-IN')}</span>
           {hasDiscount && (
             <>
-              <span className="line-through text-sm text-gray-500">${originalPrice.toFixed(2)}</span>
-              <span className="text-sm text-green-600">{discount}% off</span>
+              <span className="line-through text-sm text-gray-500">₹{numOriginal.toLocaleString('en-IN')}</span>
+              {discount != null && <span className="text-sm text-green-600">{discount}% off</span>}
             </>
           )}
         </div>
-        {rating && (
-          <p className="text-sm text-yellow-600 mt-1">Rating: {rating} ★</p>
+        {rating != null && !isNaN(Number(rating)) && Number(rating) > 0 && (
+          <p className="text-sm text-yellow-600 mt-1">Rating: {Number(rating).toFixed(1)} ★</p>
         )}
         {delivery && (
           <p className="text-sm text-gray-700">Delivery: {delivery}</p>

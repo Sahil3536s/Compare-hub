@@ -15,6 +15,7 @@ import RankingExplanationBanner from '../components/RankingExplanationBanner';
 import LoadingSkeleton from '../components/LoadingSkeleton';
 import ResultHeader from '../components/shopping/ResultHeader';
 import ErrorState from '../components/ErrorState';
+import EmptyState from '../components/EmptyState';
 import PersonalizedRankingToolbar from '../components/PersonalizedRankingToolbar';
 import { saveProduct } from '../services/savedService';
 import { recordSearchHistory } from '../services/historyService';
@@ -289,13 +290,16 @@ export const ShoppingPage = () => {
       const wDelivery = (weights.delivery || 15) / 100;
       const wTrust = (weights.reliability || 10) / 100;
 
-      const minP = Math.min(...offers.map((o) => Number(o.effectivePrice || o.price)));
-      const maxP = Math.max(...offers.map((o) => Number(o.effectivePrice || o.price)));
+      const validPrices = offers
+        .map((o) => Number(o?.effectivePrice || o?.price || 0))
+        .filter((p) => !isNaN(p) && p > 0);
+      const minP = validPrices.length > 0 ? Math.min(...validPrices) : 0;
+      const maxP = validPrices.length > 0 ? Math.max(...validPrices) : 1;
       const pRange = maxP - minP;
 
       const scored = offers.map((offer) => {
-        const p = Number(offer.effectivePrice || offer.price);
-        const normP = pRange > 0 ? (maxP - p) / pRange : 1.0;
+        const p = Number(offer?.effectivePrice || offer?.price || 0);
+        const normP = pRange > 0 ? Math.max(0, Math.min(1, (maxP - p) / pRange)) : 1.0;
         const normR = (offer.rating || 3.0) / 5.0;
         const normD = (offer.discountPercent || 0) / 100;
         const normDel = offer.delivery?.toLowerCase().includes('same day') || offer.delivery?.toLowerCase().includes('today')
@@ -623,9 +627,9 @@ export const ShoppingPage = () => {
             <ErrorState title="Shopping Engine Error" message={error} onRetry={fetchOffers} />
           ) : (viewMode === 'canonical' && canonicalProducts.length > 0 ? canonicalProducts.length : offers.length) === 0 ? (
             <EmptyState
-              title="No Products Found"
-              description="We couldn't find any products matching your filters. Try adjusting your query or price range."
-              actionText="Clear All Filters"
+              title={query ? `No products found for '${query}'` : 'No Products Found'}
+              description="We couldn't find matching products from the currently connected providers."
+              actionText="Search Again"
               onAction={resetFilters}
             />
           ) : viewMode === 'canonical' && canonicalProducts.length > 0 ? (

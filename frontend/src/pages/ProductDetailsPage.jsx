@@ -93,6 +93,7 @@ export const ProductDetailsPage = () => {
 
   // Initial load
   useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
     let isMounted = true;
     const loadDetails = async () => {
       setLoading(true);
@@ -276,6 +277,12 @@ export const ProductDetailsPage = () => {
   const effectiveBestPrice = currentLowestPrice || bestCurrentPrice || (rawOffers[0]?.price);
   const primaryMerchant = cheapestMerchant || bestMerchant || rawOffers[0]?.merchant || 'Stores';
   const primaryDealUrl = rawOffers[0]?.productUrl || '#';
+
+  const isDemoProduct =
+    productData.live === false ||
+    productData.dataSource === 'DEMO' ||
+    productData.isDemo === true ||
+    (rawOffers.length > 0 && rawOffers.every((o) => !o.live || o.dataSource === 'DEMO'));
 
   // Genuine discount: only when genuinely supplied and originalPrice > effectiveBestPrice
   const originalPrice = rawOffers[0]?.originalPrice;
@@ -536,7 +543,7 @@ export const ProductDetailsPage = () => {
             <div className="lg:col-span-4 flex flex-col justify-between space-y-5">
               <div>
                 {/* Merchant Provider Badge */}
-                <div className="flex items-center gap-2 mb-2">
+                <div className="flex items-center gap-2 mb-2 flex-wrap">
                   <span className="inline-flex items-center gap-1.5 text-xs font-bold bg-indigo-50 text-indigo-700 px-3 py-1 rounded-full border border-indigo-100">
                     <span className="w-1.5 h-1.5 rounded-full bg-indigo-600" />
                     Available on {primaryMerchant}
@@ -546,6 +553,7 @@ export const ProductDetailsPage = () => {
                       + {rawOffers.length - 1} more {rawOffers.length === 2 ? 'store' : 'stores'}
                     </span>
                   )}
+                  {isDemoProduct && <DemoBadge />}
                 </div>
 
                 {/* Full Canonical Product Name */}
@@ -1033,6 +1041,14 @@ export const ProductDetailsPage = () => {
                 <h3 className="font-bold text-slate-700 text-sm">Price tracking has just started for this product.</h3>
                 <p className="text-xs text-slate-500 max-w-sm mt-1">
                   We are now polling stores regularly. Verified trend curves will be plotted as price points accumulate.
+                </p>
+              </div>
+            ) : pricePoints.length < 3 ? (
+              <div className="h-full flex flex-col items-center justify-center text-center p-6 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                <span className="text-3xl mb-2">📊</span>
+                <h3 className="font-bold text-slate-700 text-sm">Not enough price history yet.</h3>
+                <p className="text-xs text-slate-500 max-w-sm mt-1">
+                  At least 3 price points are required to plot an authentic price trend. We are accumulating more data points.
                 </p>
               </div>
             ) : (

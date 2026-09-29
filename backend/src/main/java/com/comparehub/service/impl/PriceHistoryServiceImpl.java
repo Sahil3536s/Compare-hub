@@ -37,10 +37,7 @@ public class PriceHistoryServiceImpl implements PriceHistoryService {
     private final DealQualityService dealQualityService;
     private final PurchaseTimingService purchaseTimingService;
 
-    public PriceHistoryServiceImpl(ProductPriceHistoryRepository priceHistoryRepository, ProductRepository productRepository) {
-        this(priceHistoryRepository, productRepository, null, null);
-    }
-
+    
     @Override
     @Transactional
     public void recordPriceIfChanged(Product product, String merchant, BigDecimal price, String currency) {
@@ -247,24 +244,59 @@ public class PriceHistoryServiceImpl implements PriceHistoryService {
                     .build();
         }
 
-        List<BigDecimal> prices = history.stream()
-                .map(ProductPriceHistory::getPrice)
-                .filter(Objects::nonNull)
-                .sorted()
-                .collect(Collectors.toList());
+        // Deduplicate records to ensure observations span meaningful timestamps rather than duplicate records from the same instant.
+        List<ProductPriceHistory> validObservations = new ArrayList<>();
+        ProductPriceHistory lastRecorded = null;
+        for (ProductPriceHistory record : history) {
+            if (record.getPrice() == null || record.getPrice().compareTo(BigDecimal.ZERO) <= 0) {
+                continue;
+            }
+            if (lastRecorded == null) {
+                validObservations.add(record);
+                lastRecorded = record;
+            } else {
+                long minutesBetween = (lastRecorded.getRecordedAt() != null && record.getRecordedAt() != null)
+                        ? Math.abs(java.time.Duration.between(lastRecorded.getRecordedAt(), record.getRecordedAt()).toMinutes())
+                        : 0;
+                // Meaningful observation: price changed or at least 60 minutes apart
+                if (record.getPrice().compareTo(lastRecorded.getPrice()) != 0 || minutesBetween >= 60) {
+                    validObservations.add(record);
+                    lastRecorded = record;
+                }
+            }
+        }
 
-        if (prices.isEmpty()) {
+        // Minimum Rule: Fewer than 3 valid historical observations => INSUFFICIENT_DATA
+        if (validObservations.size() < 3) {
+            List<BigDecimal> sparsePrices = validObservations.stream()
+                    .map(ProductPriceHistory::getPrice)
+                    .sorted()
+                    .collect(Collectors.toList());
+            BigDecimal min = !sparsePrices.isEmpty() ? sparsePrices.get(0) : null;
+            BigDecimal max = !sparsePrices.isEmpty() ? sparsePrices.get(sparsePrices.size() - 1) : null;
+            BigDecimal avg = !sparsePrices.isEmpty()
+                    ? sparsePrices.stream().reduce(BigDecimal.ZERO, BigDecimal::add).divide(BigDecimal.valueOf(sparsePrices.size()), 2, RoundingMode.HALF_UP)
+                    : null;
+
             return com.comparehub.dto.PriceMeterDto.builder()
                     .classification("INSUFFICIENT_DATA")
                     .classificationLabel("Not enough price history yet")
-                    .currentPrice(currentPrice)
+                    .currentPrice(currentPrice != null ? currentPrice : (!sparsePrices.isEmpty() ? sparsePrices.get(sparsePrices.size() - 1) : null))
+                    .historicalMinimum(min)
+                    .historicalMaximum(max)
+                    .historicalAverage(avg)
                     .period(sanitizedPeriod)
-                    .observationsCount(0)
+                    .observationsCount(validObservations.size())
                     .score(null)
                     .hasSufficientData(false)
                     .summaryText("Not enough price history yet")
                     .build();
         }
+
+        List<BigDecimal> prices = validObservations.stream()
+                .map(ProductPriceHistory::getPrice)
+                .sorted()
+                .collect(Collectors.toList());
 
         BigDecimal effectiveCurrent = currentPrice != null ? currentPrice : prices.get(prices.size() - 1);
         BigDecimal min = prices.get(0);

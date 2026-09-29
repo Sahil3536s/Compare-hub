@@ -191,4 +191,96 @@ describe('ProductDetailsPage Component', () => {
     expect(screen.getByText(/Expected Trend: STABLE/i)).toBeInTheDocument();
     expect(screen.getByText(/Confidence: 85%/i)).toBeInTheDocument();
   });
+
+  it('renders "Price tracking has just started for this product." when price points are 0', async () => {
+    productService.getProductDetails.mockResolvedValue({
+      ...mockDetail,
+      priceHistory: { productId: 101, period: '90D', pricePoints: [] },
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/products/101']}>
+        <Routes>
+          <Route path="/products/:productId" element={<ProductDetailsPage />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Price tracking has just started for this product.')).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId('mock-price-line-chart')).not.toBeInTheDocument();
+  });
+
+  it('renders "Not enough price history yet." when price points are less than 3', async () => {
+    productService.getProductDetails.mockResolvedValue({
+      ...mockDetail,
+      priceHistory: {
+        productId: 101,
+        period: '90D',
+        pricePoints: [
+          { date: '2026-08-01', price: 134999, merchant: 'Amazon' },
+          { date: '2026-08-15', price: 129999, merchant: 'Flipkart' },
+        ],
+      },
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/products/101']}>
+        <Routes>
+          <Route path="/products/:productId" element={<ProductDetailsPage />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Not enough price history yet.')).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId('mock-price-line-chart')).not.toBeInTheDocument();
+  });
+
+  it('renders DEMO DATA badge when product is a demo product', async () => {
+    productService.getProductDetails.mockResolvedValue({
+      ...mockDetail,
+      live: false,
+      dataSource: 'DEMO',
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/products/101']}>
+        <Routes>
+          <Route path="/products/:productId" element={<ProductDetailsPage />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getAllByText('DEMO DATA').length).toBeGreaterThan(0);
+    });
+  });
+
+  it('handles INSUFFICIENT_DATA price meter correctly with no confident score', async () => {
+    productService.getProductDetails.mockResolvedValue({
+      ...mockDetail,
+      priceMeter: {
+        status: 'INSUFFICIENT_DATA',
+        hasSufficientData: false,
+        score: null,
+        classificationLabel: 'Not enough price history yet',
+      },
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/products/101']}>
+        <Routes>
+          <Route path="/products/:productId" element={<ProductDetailsPage />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Insufficient data')).toBeInTheDocument();
+    });
+    expect(screen.getAllByText('Not enough price history yet').length).toBeGreaterThan(0);
+  });
 });

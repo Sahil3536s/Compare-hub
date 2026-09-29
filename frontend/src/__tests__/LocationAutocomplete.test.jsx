@@ -1,5 +1,7 @@
 import React from 'react';
-import { vi } from 'vitest';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { vi, describe, beforeEach, afterEach, test, expect } from 'vitest';
+import LocationAutocomplete from '../components/LocationAutocomplete';
 
 // Mock the service
 vi.mock('../services/locationService', () => ({
@@ -10,12 +12,11 @@ import { suggestPlaces } from '../services/locationService';
 
 describe('LocationAutocomplete component', () => {
   beforeEach(() => {
-    vi.useFakeTimers();
+    vi.useFakeTimers({ shouldAdvanceTime: true });
     suggestPlaces.mockReset();
   });
 
   afterEach(() => {
-    vi.runOnlyPendingTimers();
     vi.useRealTimers();
   });
 
@@ -26,14 +27,14 @@ describe('LocationAutocomplete component', () => {
     ];
     suggestPlaces.mockResolvedValueOnce(mockResults);
 
-    const handleSelect = jest.fn();
+    const handleSelect = vi.fn();
     render(<LocationAutocomplete id="test-autocomplete" onSelect={handleSelect} placeholder="Search" />);
 
     const input = screen.getByPlaceholderText('Search');
     fireEvent.change(input, { target: { value: 'del' } });
 
     // Fast-forward debounce timer (300ms)
-    jest.advanceTimersByTime(300);
+    await vi.advanceTimersByTimeAsync(350);
 
     // Wait for async suggestions to render
     await waitFor(() => expect(suggestPlaces).toHaveBeenCalledWith('del'));
@@ -60,7 +61,7 @@ describe('LocationAutocomplete component', () => {
     render(<LocationAutocomplete id="test-autocomplete" placeholder="Search" />);
     const input = screen.getByPlaceholderText('Search');
     fireEvent.change(input, { target: { value: 'xyz' } });
-    jest.advanceTimersByTime(300);
+    await vi.advanceTimersByTimeAsync(350);
     await waitFor(() => expect(suggestPlaces).toHaveBeenCalledWith('xyz'));
     await waitFor(() => expect(screen.getByTestId('no-matching-location')).toBeInTheDocument());
   });
@@ -70,7 +71,7 @@ describe('LocationAutocomplete component', () => {
     render(<LocationAutocomplete id="test-autocomplete" placeholder="Search" />);
     const input = screen.getByPlaceholderText('Search');
     fireEvent.change(input, { target: { value: 'del' } });
-    jest.advanceTimersByTime(300);
+    await vi.advanceTimersByTimeAsync(350);
     await waitFor(() => expect(suggestPlaces).toHaveBeenCalledWith('del'));
     await waitFor(() => expect(screen.getByTestId('location-search-error')).toBeInTheDocument());
     expect(screen.getByTestId('location-search-error')).toHaveTextContent('Unable to search locations');

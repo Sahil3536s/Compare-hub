@@ -6,9 +6,11 @@ export const CanonicalProductCard = ({ product, onSave, isSaved = false }) => {
   const navigate = useNavigate();
   const [saved, setSaved] = useState(isSaved);
 
+  if (!product) return null;
+
   const {
     productId,
-    canonicalTitle,
+    canonicalTitle = 'Unnamed Product',
     brand,
     category,
     imageUrl,
@@ -34,9 +36,10 @@ export const CanonicalProductCard = ({ product, onSave, isSaved = false }) => {
     if (onSave) onSave(product);
   };
 
-  const hasMultipleOffers = offers.length > 1;
-  const storeNames = Array.from(new Set(offers.map((o) => o.merchant || o.provider).filter(Boolean)));
-  const hasDemoOnly = offers.length > 0 && offers.every((o) => !o.live || o.dataSource === 'DEMO');
+  const rawOffers = Array.isArray(offers) ? offers : [];
+  const hasMultipleOffers = rawOffers.length > 1;
+  const storeNames = Array.from(new Set(rawOffers.map((o) => o?.merchant || o?.provider).filter(Boolean)));
+  const hasDemoOnly = rawOffers.length > 0 && rawOffers.every((o) => !o?.live || o?.dataSource === 'DEMO');
 
   return (
     <div
@@ -118,13 +121,13 @@ export const CanonicalProductCard = ({ product, onSave, isSaved = false }) => {
               )}
             </div>
 
-            {rating && (
+            {rating != null && !isNaN(Number(rating)) && Number(rating) > 0 && (
               <div className="flex items-center gap-1 font-semibold text-slate-700">
                 <span className="text-amber-500">★</span>
-                <span>{rating.toFixed(1)}</span>
-                {reviewCount != null && (
+                <span>{Number(rating).toFixed(1)}</span>
+                {reviewCount != null && !isNaN(Number(reviewCount)) && (
                   <span className="text-slate-400 font-normal">
-                    ({reviewCount.toLocaleString()})
+                    ({Number(reviewCount).toLocaleString()})
                   </span>
                 )}
               </div>
@@ -137,7 +140,7 @@ export const CanonicalProductCard = ({ product, onSave, isSaved = false }) => {
           </h3>
 
           {/* Quick Spec Pills */}
-          {attributes && (
+          {attributes && typeof attributes === 'object' && (
             <div className="flex flex-wrap gap-1.5 mt-2.5">
               {attributes.storage && (
                 <span className="text-[11px] font-medium bg-slate-100 text-slate-700 px-2 py-0.5 rounded">
@@ -166,11 +169,13 @@ export const CanonicalProductCard = ({ product, onSave, isSaved = false }) => {
                 {hasMultipleOffers ? 'Lowest from' : 'Price'}
               </span>
               <div className="text-2xl font-black text-slate-900 tracking-tight">
-                {lowestPrice != null ? `₹${Number(lowestPrice).toLocaleString('en-IN')}` : '—'}
+                {lowestPrice != null && !isNaN(Number(lowestPrice))
+                  ? `₹${Number(lowestPrice).toLocaleString('en-IN')}`
+                  : '—'}
               </div>
             </div>
 
-            {priceSpread != null && Number(priceSpread) > 0 && (
+            {priceSpread != null && !isNaN(Number(priceSpread)) && Number(priceSpread) > 0 && (
               <div className="text-right">
                 <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full inline-block">
                   Save up to ₹{Number(priceSpread).toLocaleString('en-IN')}

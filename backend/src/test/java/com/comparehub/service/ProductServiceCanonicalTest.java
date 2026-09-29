@@ -1,6 +1,8 @@
 package com.comparehub.service;
 
 import com.comparehub.dto.*;
+import com.comparehub.service.DealQualityService;
+import com.comparehub.service.PurchaseTimingService;
 import com.comparehub.model.MerchantOffer;
 import com.comparehub.model.Product;
 import com.comparehub.model.ProductPriceHistory;
@@ -40,6 +42,12 @@ class ProductServiceCanonicalTest {
     private ProductPriceHistoryRepository priceHistoryRepository;
 
     @Mock
+private DealQualityService dealQualityService;
+
+@Mock
+private PurchaseTimingService purchaseTimingService;
+
+    @Mock
     private ProductAttributeExtractor attributeExtractor;
 
     @Mock
@@ -54,7 +62,9 @@ class ProductServiceCanonicalTest {
 
     @BeforeEach
     void setUp() {
-        priceHistoryService = new PriceHistoryServiceImpl(priceHistoryRepository, productRepository);
+        priceHistoryService = new PriceHistoryServiceImpl(priceHistoryRepository, productRepository,
+        dealQualityService,
+        purchaseTimingService);
         productService = new ProductServiceImpl(
                 productRepository,
                 merchantOfferRepository,
@@ -108,6 +118,61 @@ class ProductServiceCanonicalTest {
         assertNotNull(meter);
         assertEquals("INSUFFICIENT_DATA", meter.getStatus());
         assertEquals("INSUFFICIENT_DATA", meter.getClassification());
+        assertNull(meter.getScore());
+        assertFalse(Boolean.TRUE.equals(meter.getHasSufficientData()));
+    }
+
+    @Test
+    void testCalculatePriceMeter_FewerThanThreeObservations_ReturnsInsufficientData() {
+        Long productId = 105L;
+        Instant now = Instant.now();
+        Product product = Product.builder().id(productId).name("OnePlus 12").build();
+
+        // Exactly 2 observations (< 3 threshold)
+        List<ProductPriceHistory> history = List.of(
+                ProductPriceHistory.builder().id(1L).product(product).merchant("Amazon").price(new BigDecimal("64999")).recordedAt(now.minusSeconds(86400 * 5)).build(),
+                ProductPriceHistory.builder().id(2L).product(product).merchant("Flipkart").price(new BigDecimal("65999")).recordedAt(now.minusSeconds(86400 * 2)).build()
+        );
+
+        when(priceHistoryRepository.findByProductIdAndRecordedAtGreaterThanEqualOrderByRecordedAtAsc(eq(productId), any(Instant.class)))
+                .thenReturn(history);
+
+        PriceMeterDto meter = priceHistoryService.calculatePriceMeter(productId, new BigDecimal("64999"), "30D");
+
+        assertNotNull(meter);
+        assertEquals("INSUFFICIENT_DATA", meter.getStatus());
+        assertEquals("INSUFFICIENT_DATA", meter.getClassification());
+        assertEquals("Not enough price history yet", meter.getClassificationLabel());
+        assertEquals("Not enough price history yet", meter.getSummaryText());
+        assertNull(meter.getScore(), "Score must be null when fewer than 3 observations exist");
+        assertFalse(Boolean.TRUE.equals(meter.getHasSufficientData()));
+        assertEquals(2, meter.getObservationsCount());
+    }
+
+    @Test
+    void testCalculatePriceMeter_DuplicateSameInstantRecords_DeduplicatedToInsufficient() {
+        Long productId = 106L;
+        Instant sameInstant = Instant.now().minusSeconds(3600);
+        Product product = Product.builder().id(productId).name("iQOO 12").build();
+
+        // 3 records but at the exact same second with the same price (duplicated poll)
+        List<ProductPriceHistory> history = List.of(
+                ProductPriceHistory.builder().id(1L).product(product).merchant("Amazon").price(new BigDecimal("52999")).recordedAt(sameInstant).build(),
+                ProductPriceHistory.builder().id(2L).product(product).merchant("Amazon").price(new BigDecimal("52999")).recordedAt(sameInstant.plusSeconds(5)).build(),
+                ProductPriceHistory.builder().id(3L).product(product).merchant("Amazon").price(new BigDecimal("52999")).recordedAt(sameInstant.plusSeconds(10)).build()
+        );
+
+        when(priceHistoryRepository.findByProductIdAndRecordedAtGreaterThanEqualOrderByRecordedAtAsc(eq(productId), any(Instant.class)))
+                .thenReturn(history);
+
+        PriceMeterDto meter = priceHistoryService.calculatePriceMeter(productId, new BigDecimal("52999"), "30D");
+
+        assertNotNull(meter);
+        assertEquals("INSUFFICIENT_DATA", meter.getStatus());
+        assertEquals("INSUFFICIENT_DATA", meter.getClassification());
+        assertNull(meter.getScore(), "Score must be null when distinct observations < 3");
+        assertFalse(Boolean.TRUE.equals(meter.getHasSufficientData()));
+        assertEquals(1, meter.getObservationsCount(), "Duplicate polls within minutes should collapse to 1 observation");
     }
 
     @Test
