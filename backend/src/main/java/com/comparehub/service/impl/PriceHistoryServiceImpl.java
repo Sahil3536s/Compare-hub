@@ -233,12 +233,13 @@ public class PriceHistoryServiceImpl implements PriceHistoryService {
         if (history == null || history.isEmpty()) {
             return com.comparehub.dto.PriceMeterDto.builder()
                     .classification("INSUFFICIENT_DATA")
-                    .classificationLabel("Insufficient Data")
+                    .classificationLabel("Not enough price history yet")
                     .currentPrice(currentPrice)
                     .period(sanitizedPeriod)
                     .observationsCount(0)
+                    .score(null)
                     .hasSufficientData(false)
-                    .summaryText("Not enough price history yet to calculate Price Meter.")
+                    .summaryText("Not enough price history yet")
                     .build();
         }
 
@@ -251,12 +252,13 @@ public class PriceHistoryServiceImpl implements PriceHistoryService {
         if (prices.isEmpty()) {
             return com.comparehub.dto.PriceMeterDto.builder()
                     .classification("INSUFFICIENT_DATA")
-                    .classificationLabel("Insufficient Data")
+                    .classificationLabel("Not enough price history yet")
                     .currentPrice(currentPrice)
                     .period(sanitizedPeriod)
                     .observationsCount(0)
+                    .score(null)
                     .hasSufficientData(false)
-                    .summaryText("Not enough price history yet to calculate Price Meter.")
+                    .summaryText("Not enough price history yet")
                     .build();
         }
 
@@ -295,25 +297,36 @@ public class PriceHistoryServiceImpl implements PriceHistoryService {
             default -> "90-day";
         };
 
+        double minVal = min.doubleValue();
+        double maxVal = max.doubleValue();
+        double range = maxVal - minVal;
+        double relativePosition = range > 0.0001
+                ? Math.max(0.0, Math.min(1.0, (currVal - minVal) / range))
+                : 0.5;
+
+        // Buying score: 0 (poor buying time / max price) to 100 (good buying time / min price)
+        double rawScore = (1.0 - relativePosition) * 100.0;
+        int score = (int) Math.round(Math.max(0.0, Math.min(100.0, rawScore)));
+
         if (diffPct <= -10.0 || effectiveCurrent.compareTo(min) <= 0) {
             classification = "EXCELLENT_DEAL";
-            classificationLabel = "Excellent Deal";
+            classificationLabel = "EXCELLENT DEAL";
             summaryText = String.format("Current price is %.1f%% lower than its %s average.", Math.abs(roundedDiffPct), periodLabel);
         } else if (diffPct <= -3.0) {
             classification = "GOOD_PRICE";
-            classificationLabel = "Good Price";
+            classificationLabel = "GOOD PRICE";
             summaryText = String.format("Current price is %.1f%% lower than its %s average.", Math.abs(roundedDiffPct), periodLabel);
         } else if (diffPct <= 3.0) {
             classification = "AVERAGE_PRICE";
-            classificationLabel = "Average Price";
+            classificationLabel = "FAIR VALUE";
             summaryText = String.format("Current price matches its %s average.", periodLabel);
         } else if (diffPct <= 10.0) {
             classification = "ABOVE_AVERAGE";
-            classificationLabel = "Above Average";
+            classificationLabel = "ABOVE AVERAGE";
             summaryText = String.format("Current price is %.1f%% higher than its %s average.", roundedDiffPct, periodLabel);
         } else {
             classification = "HIGH_PRICE";
-            classificationLabel = "High Price";
+            classificationLabel = "HIGH PRICE";
             summaryText = String.format("Current price is %.1f%% higher than its %s average.", roundedDiffPct, periodLabel);
         }
 
@@ -326,6 +339,8 @@ public class PriceHistoryServiceImpl implements PriceHistoryService {
                 .historicalAverage(avg)
                 .historicalMedian(median)
                 .percentDifferenceFromAverage(roundedDiffPct)
+                .relativePositionWithinHistoricalRange(relativePosition)
+                .score(score)
                 .summaryText(summaryText)
                 .period(sanitizedPeriod)
                 .observationsCount(prices.size())

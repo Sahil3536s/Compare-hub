@@ -74,9 +74,17 @@ export const getProductDetails = async (productId) => {
   return response.data;
 };
 
+export const getProductPriceMeter = async (productId, period = '30D', currentPrice) => {
+  const params = { period };
+  if (currentPrice) params.currentPrice = currentPrice;
+  const response = await apiClient.get(`/products/${productId}/price-meter`, { params });
+  return response.data;
+};
+
 export default {
   searchProducts,
   getSearchSuggestions,
   getProductPriceHistory,
   getProductDetails,
+  getProductPriceMeter,
 };

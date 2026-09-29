@@ -27,6 +27,8 @@ public class PriceMeterDto {
     private BigDecimal historicalMedian;
 
     private Double percentDifferenceFromAverage; // negative = below average, positive = above average
+    private Double relativePositionWithinHistoricalRange; // 0.0 (at min) to 1.0 (at max)
+    private Integer score; // 0 (poor buying time) to 100 (good buying time)
     private String summaryText; // e.g. "Current price is 7.1% lower than its 90-day average."
     private String period; // e.g. "90D"
     private Integer observationsCount;

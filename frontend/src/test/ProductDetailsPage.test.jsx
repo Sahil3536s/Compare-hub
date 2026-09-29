@@ -82,14 +82,20 @@ describe('ProductDetailsPage Component', () => {
     priceMeter: {
       status: 'CALCULATED',
       classification: 'EXCELLENT_DEAL',
+      classificationLabel: 'Excellent Deal',
+      hasSufficientData: true,
+      score: 95,
       currentPrice: 119999,
+      historicalMinimum: 119999,
       historicalLowest: 119999,
       historicalAverage: 128500,
+      historicalMaximum: 134999,
       historicalHighest: 134999,
       percentDifferenceFromAverage: -6.6,
       differencePercentage: -6.6,
       differenceFromAvg: -8501,
       advice: 'Current price is at its 90-day lowest. Excellent time to purchase.',
+      summaryText: 'Current price is at its 90-day lowest. Excellent time to purchase.',
       percentile: 5,
     },
     offers: [
@@ -146,6 +152,7 @@ describe('ProductDetailsPage Component', () => {
     vi.clearAllMocks();
     productService.getProductDetails.mockResolvedValue(mockDetail);
     productService.getProductPriceHistory.mockResolvedValue(mockDetail.priceHistory);
+    productService.getProductPriceMeter.mockResolvedValue(mockDetail.priceMeter);
   });
 
   it('loads and renders product hero, price meter, merchant offers, and price trend', async () => {
@@ -173,14 +180,15 @@ describe('ProductDetailsPage Component', () => {
     expect(screen.getByText('Flipkart')).toBeInTheDocument();
 
     // Verify Specifications
-    expect(screen.getByText('Specifications & Attributes')).toBeInTheDocument();
+    expect(screen.getByText('Product Specifications')).toBeInTheDocument();
     expect(screen.getByText('Galaxy S24 Ultra')).toBeInTheDocument();
 
     // Verify Price History Chart is mounted
     expect(screen.getByTestId('mock-price-line-chart')).toBeInTheDocument();
 
-    // Verify Buy/Wait Timing Intelligence
-    expect(screen.getByText('Purchase Timing Intelligence')).toBeInTheDocument();
-    expect(screen.getByText(/Recommendation: Buy Now/i)).toBeInTheDocument();
+    // Verify ML Price Prediction & Insights
+    expect(screen.getByText('Price Insights & ML Prediction')).toBeInTheDocument();
+    expect(screen.getByText(/Expected Trend: STABLE/i)).toBeInTheDocument();
+    expect(screen.getByText(/Confidence: 85%/i)).toBeInTheDocument();
   });
 });

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { getProductDetails, getProductPriceHistory } from '../services/productService';
+import { getProductDetails, getProductPriceHistory, getProductPriceMeter } from '../services/productService';
 import { createPriceAlert } from '../services/alertService';
 import { saveProduct } from '../services/savedService';
 import { useAuth } from '../context/AuthContext';
@@ -32,13 +32,22 @@ ChartJS.register(
   Filler
 );
 
-const PERIOD_OPTIONS = [
-  { label: '7 Days', value: '7D' },
-  { label: '30 Days', value: '30D' },
-  { label: '90 Days', value: '90D' },
-  { label: '6 Months', value: '6M' },
-  { label: '1 Year', value: '1Y' },
-  { label: 'All Time', value: 'ALL' },
+// Horizon options for hero price meter
+const TIME_HORIZONS = [
+  { label: '2-3 Days', period: '7D' },
+  { label: '1 Week', period: '7D' },
+  { label: '1 Month', period: '30D' },
+  { label: '3 Months', period: '90D' },
+];
+
+// Range options for full-width Price History section
+const HISTORY_RANGES = [
+  { label: '7D', value: '7D' },
+  { label: '30D', value: '30D' },
+  { label: '90D', value: '90D' },
+  { label: '6M', value: '6M' },
+  { label: '1Y', value: '1Y' },
+  { label: 'ALL', value: 'ALL' },
 ];
 
 export const ProductDetailsPage = () => {
@@ -50,15 +59,28 @@ export const ProductDetailsPage = () => {
   const [error, setError] = useState(null);
   const [productData, setProductData] = useState(null);
 
-  // Price history period state
-  const [historyPeriod, setHistoryPeriod] = useState('90D');
+  // Gallery state
+  const [selectedImage, setSelectedImage] = useState(null);
+  const [galleryImages, setGalleryImages] = useState([]);
+
+  // Price meter time-horizon state
+  const [meterHorizon, setMeterHorizon] = useState('90D');
+  const [priceMeter, setPriceMeter] = useState(null);
+  const [meterLoading, setMeterLoading] = useState(false);
+
+  // Price history section state
+  const [historyRange, setHistoryRange] = useState('90D');
   const [historyData, setHistoryData] = useState(null);
   const [historyLoading, setHistoryLoading] = useState(false);
 
   // Offers sorting
   const [offerSortBy, setOfferSortBy] = useState('price_asc'); // 'price_asc' | 'rating' | 'delivery'
 
-  // Price alert state
+  // Variant selections
+  const [selectedStorage, setSelectedStorage] = useState(null);
+  const [selectedColor, setSelectedColor] = useState(null);
+
+  // Price alert modal state
   const [alertOpen, setAlertOpen] = useState(false);
   const [targetPrice, setTargetPrice] = useState('');
   const [alertSubmitting, setAlertSubmitting] = useState(false);
@@ -70,7 +92,7 @@ export const ProductDetailsPage = () => {
   const [saveLoading, setSaveLoading] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
 
-  // Initial load of product details
+  // Initial load
   useEffect(() => {
     let isMounted = true;
     const loadDetails = async () => {
@@ -80,15 +102,30 @@ export const ProductDetailsPage = () => {
         const data = await getProductDetails(productId);
         if (isMounted) {
           setProductData(data);
-          if (data?.priceHistory) {
-            setHistoryData(data.priceHistory);
+          setPriceMeter(data?.priceMeter || null);
+          setHistoryData(data?.priceHistory || null);
+
+          // Setup gallery images
+          const images = [];
+          if (data.imageUrl) images.push(data.imageUrl);
+          if (data.merchantOffers) {
+            data.merchantOffers.forEach((o) => {
+              if (o.imageUrl && !images.includes(o.imageUrl)) {
+                images.push(o.imageUrl);
+              }
+            });
           }
-          if (data?.currentLowestPrice) {
-            // Suggest target price as 5% below current lowest
-            const currentNum = Number(data.currentLowestPrice);
-            if (!isNaN(currentNum) && currentNum > 0) {
-              setTargetPrice(Math.round(currentNum * 0.95).toString());
-            }
+          setGalleryImages(images);
+          setSelectedImage(images[0] || null);
+
+          // Setup variants
+          if (data.specifications?.Storage) setSelectedStorage(data.specifications.Storage);
+          if (data.specifications?.Color) setSelectedColor(data.specifications.Color);
+
+          // Suggest alert price (5% lower than current lowest)
+          const currentPrice = Number(data.currentLowestPrice || data.bestCurrentPrice);
+          if (!isNaN(currentPrice) && currentPrice > 0) {
+            setTargetPrice(Math.round(currentPrice * 0.95).toString());
           }
         }
       } catch (err) {
@@ -109,21 +146,36 @@ export const ProductDetailsPage = () => {
     };
   }, [productId]);
 
-  // Load history when period selector changes
-  const handlePeriodChange = async (newPeriod) => {
-    setHistoryPeriod(newPeriod);
+  // Handle Horizon change for hero PriceMeter
+  const handleHorizonChange = async (period) => {
+    setMeterHorizon(period);
+    setMeterLoading(true);
+    try {
+      const bestPrice = productData?.currentLowestPrice || productData?.bestCurrentPrice;
+      const meter = await getProductPriceMeter(productId, period, bestPrice);
+      setPriceMeter(meter);
+    } catch (err) {
+      console.warn('Failed to fetch price meter for horizon:', period, err);
+    } finally {
+      setMeterLoading(false);
+    }
+  };
+
+  // Handle Range change for full Price History chart
+  const handleHistoryRangeChange = async (period) => {
+    setHistoryRange(period);
     setHistoryLoading(true);
     try {
-      const history = await getProductPriceHistory(productId, newPeriod);
+      const history = await getProductPriceHistory(productId, period);
       setHistoryData(history);
     } catch (err) {
-      console.warn('Failed to fetch price history for period:', newPeriod, err);
+      console.warn('Failed to fetch price history for range:', period, err);
     } finally {
       setHistoryLoading(false);
     }
   };
 
-  // Price alert creation
+  // Price alert handler
   const handleCreateAlert = async (e) => {
     e.preventDefault();
     if (!targetPrice || isNaN(Number(targetPrice)) || Number(targetPrice) <= 0) {
@@ -137,7 +189,7 @@ export const ProductDetailsPage = () => {
         productId: Number(productId),
         productName: productData?.name,
         targetPrice: Number(targetPrice),
-        merchant: productData?.cheapestMerchant,
+        merchant: productData?.cheapestMerchant || productData?.bestMerchant,
       });
       setAlertSuccess(true);
       setTimeout(() => {
@@ -161,7 +213,7 @@ export const ProductDetailsPage = () => {
     try {
       await saveProduct({
         productId: Number(productId),
-        savedPrice: productData?.currentLowestPrice,
+        savedPrice: productData?.currentLowestPrice || productData?.bestCurrentPrice,
       });
       setSaved(true);
     } catch (err) {
@@ -171,7 +223,6 @@ export const ProductDetailsPage = () => {
     }
   };
 
-  // Copy share link
   const handleCopyLink = () => {
     navigator.clipboard.writeText(window.location.href);
     setCopiedLink(true);
@@ -206,24 +257,43 @@ export const ProductDetailsPage = () => {
   }
 
   const {
-    id,
     name,
     brand,
     category,
-    imageUrl,
     rating,
     reviewCount,
     currentLowestPrice,
+    bestCurrentPrice,
     cheapestMerchant,
+    bestMerchant,
+    merchantOffers = [],
     offers = [],
     specifications = {},
-    priceMeter,
     mlPrediction,
     alternatives = [],
   } = productData;
 
-  // Sorted offers
-  const sortedOffers = [...offers].sort((a, b) => {
+  const rawOffers = offers.length > 0 ? offers : merchantOffers;
+  const effectiveBestPrice = currentLowestPrice || bestCurrentPrice || (rawOffers[0]?.price);
+  const primaryMerchant = cheapestMerchant || bestMerchant || rawOffers[0]?.merchant || 'Stores';
+  const primaryDealUrl = rawOffers[0]?.productUrl || '#';
+
+  // Genuine discount: only when genuinely supplied and originalPrice > effectiveBestPrice
+  const originalPrice = rawOffers[0]?.originalPrice;
+  const hasGenuineDiscount =
+    originalPrice &&
+    Number(originalPrice) > Number(effectiveBestPrice) &&
+    Number(effectiveBestPrice) > 0;
+  const genuineDiscountPct = hasGenuineDiscount
+    ? Math.round(((Number(originalPrice) - Number(effectiveBestPrice)) / Number(originalPrice)) * 100)
+    : 0;
+
+  // Genuine Rating / Reviews: only when genuine data exists
+  const hasGenuineRating = rating != null && Number(rating) > 0;
+  const hasGenuineReviews = reviewCount != null && Number(reviewCount) > 0;
+
+  // Sorted offers for Section 1 (Compare Prices)
+  const sortedOffers = [...rawOffers].sort((a, b) => {
     if (offerSortBy === 'price_asc') {
       const priceA = Number(a.effectivePrice || a.price || 0);
       const priceB = Number(b.effectivePrice || b.price || 0);
@@ -240,57 +310,100 @@ export const ProductDetailsPage = () => {
     return 0;
   });
 
-  // Price meter needle position calculation
-  const getMeterNeedlePercent = () => {
-    if (!priceMeter || priceMeter.status === 'INSUFFICIENT_DATA') return 50;
-    const min = Number(priceMeter.historicalLowest);
-    const max = Number(priceMeter.historicalHighest);
-    const cur = Number(priceMeter.currentPrice);
-    if (isNaN(min) || isNaN(max) || min === max) return 50;
-    const clamped = Math.max(min, Math.min(max, cur));
-    return Math.round(((clamped - min) / (max - min)) * 100);
-  };
+  // Price Meter Status & Calculations
+  const hasSufficientHistory = Boolean(
+    priceMeter && (priceMeter.hasSufficientData === true || priceMeter.status === 'CALCULATED')
+  );
+  const meterScore = hasSufficientHistory && priceMeter.score != null ? priceMeter.score : null;
 
-  // Price meter color badge
-  const getMeterBadgeInfo = () => {
-    const classification = priceMeter?.classification || 'INSUFFICIENT_DATA';
+  // Recommendation Badge info
+  const getRecommendationBadge = () => {
+    if (!hasSufficientHistory) {
+      return {
+        label: 'Not enough price history yet',
+        colorClass: 'bg-slate-100 text-slate-700 border-slate-300',
+        zone: 'Insufficient Data',
+      };
+    }
+    const classification = priceMeter?.classification || 'AVERAGE_PRICE';
     switch (classification) {
       case 'EXCELLENT_DEAL':
-        return { label: '🔥 Excellent Deal', bg: 'bg-emerald-100 text-emerald-800 border-emerald-300' };
+        return {
+          label: 'EXCELLENT DEAL',
+          colorClass: 'bg-emerald-600 text-white border-emerald-600 shadow-xs',
+          zone: 'Good buying time',
+        };
       case 'GOOD_PRICE':
-        return { label: '✓ Good Price', bg: 'bg-blue-100 text-blue-800 border-blue-300' };
+        return {
+          label: 'GOOD PRICE',
+          colorClass: 'bg-teal-600 text-white border-teal-600 shadow-xs',
+          zone: 'Good buying time',
+        };
       case 'AVERAGE_PRICE':
-        return { label: '≈ Fair / Average', bg: 'bg-amber-100 text-amber-800 border-amber-300' };
+        return {
+          label: 'FAIR VALUE',
+          colorClass: 'bg-amber-500 text-white border-amber-500 shadow-xs',
+          zone: 'Average',
+        };
       case 'ABOVE_AVERAGE':
-        return { label: '↑ Above Average', bg: 'bg-orange-100 text-orange-800 border-orange-300' };
+        return {
+          label: 'ABOVE AVERAGE',
+          colorClass: 'bg-orange-500 text-white border-orange-500 shadow-xs',
+          zone: 'Poor buying time',
+        };
       case 'HIGH_PRICE':
-        return { label: '⚠️ High Price', bg: 'bg-rose-100 text-rose-800 border-rose-300' };
+        return {
+          label: 'HIGH PRICE',
+          colorClass: 'bg-rose-600 text-white border-rose-600 shadow-xs',
+          zone: 'Poor buying time',
+        };
       default:
-        return { label: 'Collecting Data', bg: 'bg-slate-100 text-slate-700 border-slate-300' };
+        return {
+          label: priceMeter?.classificationLabel || 'FAIR VALUE',
+          colorClass: 'bg-indigo-600 text-white border-indigo-600',
+          zone: 'Average',
+        };
     }
   };
 
-  // Chart dataset preparation
+  const recBadge = getRecommendationBadge();
+
+  // Price history chart data preparation
   const pricePoints = historyData?.pricePoints || [];
   const chartLabels = pricePoints.map((p) => p.date || p.recordedAt?.substring(0, 10) || '');
   const chartValues = pricePoints.map((p) => Number(p.price));
+  const avgLineValue = priceMeter?.historicalAverage ? Number(priceMeter.historicalAverage) : null;
 
   const chartData = {
     labels: chartLabels,
     datasets: [
       {
-        label: 'Historical Price (₹)',
+        label: 'Historical Price',
         data: chartValues,
         borderColor: '#4f46e5',
         backgroundColor: 'rgba(79, 70, 229, 0.08)',
         fill: true,
-        tension: 0.25,
-        pointRadius: chartValues.length > 20 ? 1 : 4,
+        tension: 0.2,
+        pointRadius: chartValues.length > 25 ? 2 : 4,
         pointHoverRadius: 6,
         pointBackgroundColor: '#4f46e5',
         pointBorderColor: '#ffffff',
         pointBorderWidth: 2,
       },
+      ...(avgLineValue && chartValues.length > 1
+        ? [
+            {
+              label: `Average Price (₹${avgLineValue.toLocaleString('en-IN')})`,
+              data: Array(chartLabels.length).fill(avgLineValue),
+              borderColor: '#94a3b8',
+              borderDash: [5, 5],
+              borderWidth: 1.5,
+              fill: false,
+              pointRadius: 0,
+              pointHoverRadius: 0,
+            },
+          ]
+        : []),
     ],
   };
 
@@ -298,7 +411,12 @@ export const ProductDetailsPage = () => {
     responsive: true,
     maintainAspectRatio: false,
     plugins: {
-      legend: { display: false },
+      legend: {
+        display: Boolean(avgLineValue && chartValues.length > 1),
+        position: 'top',
+        align: 'end',
+        labels: { boxWidth: 14, font: { size: 11, weight: 'bold' } },
+      },
       tooltip: {
         backgroundColor: '#0f172a',
         padding: 12,
@@ -306,9 +424,12 @@ export const ProductDetailsPage = () => {
         bodyFont: { size: 13 },
         callbacks: {
           label: (context) => {
+            if (context.datasetIndex === 1) {
+              return ` Historical Average: ₹${avgLineValue.toLocaleString('en-IN')}`;
+            }
             const pt = pricePoints[context.dataIndex];
-            const merchantStr = pt?.merchant ? ` (${pt.merchant})` : '';
-            return ` ₹${Number(context.raw).toLocaleString('en-IN')}${merchantStr}`;
+            const merchantStr = pt?.merchant ? ` on ${pt.merchant}` : '';
+            return ` Price: ₹${Number(context.raw).toLocaleString('en-IN')}${merchantStr}`;
           },
         },
       },
@@ -316,7 +437,7 @@ export const ProductDetailsPage = () => {
     scales: {
       x: {
         grid: { display: false },
-        ticks: { font: { size: 11 }, maxTicksLimit: 8 },
+        ticks: { font: { size: 11 }, maxTicksLimit: 10 },
       },
       y: {
         grid: { color: 'rgba(226, 232, 240, 0.6)' },
@@ -328,24 +449,18 @@ export const ProductDetailsPage = () => {
     },
   };
 
-  const meterBadge = getMeterBadgeInfo();
-
   return (
-    <div className="bg-slate-50 min-h-screen pb-20">
-      {/* 1. Breadcrumbs */}
+    <div className="bg-slate-50 min-h-screen pb-24 text-slate-800">
+      {/* Breadcrumb Navigation */}
       <nav className="bg-white border-b border-slate-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
           <ol className="flex items-center gap-2 text-xs sm:text-sm text-slate-500 overflow-x-auto whitespace-nowrap">
             <li>
-              <Link to="/" className="hover:text-indigo-600 transition">
-                Home
-              </Link>
+              <Link to="/" className="hover:text-indigo-600 transition">Home</Link>
             </li>
             <li>/</li>
             <li>
-              <Link to="/shopping" className="hover:text-indigo-600 transition">
-                Shopping
-              </Link>
+              <Link to="/shopping" className="hover:text-indigo-600 transition">Shopping</Link>
             </li>
             {category && (
               <>
@@ -358,336 +473,394 @@ export const ProductDetailsPage = () => {
               </>
             )}
             <li>/</li>
-            <li className="font-semibold text-slate-800 truncate max-w-xs">{name}</li>
+            <li className="font-semibold text-slate-800 truncate max-w-sm">{name}</li>
           </ol>
         </div>
       </nav>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 space-y-8">
-        {/* 2. Product Hero Section */}
-        <section className="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden p-6 sm:p-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 space-y-10">
+        {/* ========================================================================= */}
+        {/* DESKTOP FIRST VIEW: RESPONSIVE 3-COLUMN HERO SECTION                     */}
+        {/* ========================================================================= */}
+        <section className="bg-white rounded-3xl border border-slate-200/90 shadow-sm p-6 lg:p-8">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-            {/* Left: Product Media */}
-            <div className="lg:col-span-5 flex flex-col items-center">
-              <div className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-6 flex items-center justify-center min-h-[320px] max-h-[420px] relative group overflow-hidden">
-                {imageUrl ? (
+            
+            {/* ------------------------------------------------------------------- */}
+            {/* LEFT COLUMN — PRODUCT MEDIA                                         */}
+            {/* ------------------------------------------------------------------- */}
+            <div className="lg:col-span-4 flex flex-col items-center space-y-4">
+              {/* Main Image Stage */}
+              <div className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-6 flex items-center justify-center min-h-[300px] max-h-[380px] aspect-square relative group overflow-hidden">
+                {selectedImage ? (
                   <img
-                    src={imageUrl}
+                    src={selectedImage}
                     alt={name}
-                    className="max-h-[320px] w-auto object-contain group-hover:scale-105 transition-transform duration-300"
+                    className="max-h-[340px] w-auto object-contain transition-transform duration-300 group-hover:scale-105"
                   />
                 ) : (
                   <div className="text-6xl text-slate-300">📦</div>
                 )}
-                <div className="absolute top-3 left-3 flex flex-col gap-1.5">
+                <div className="absolute top-3 left-3">
                   {brand && (
-                    <span className="bg-slate-900 text-white text-xs font-bold px-3 py-1 rounded-full shadow-xs">
+                    <span className="bg-slate-900/90 text-white text-xs font-bold px-3 py-1 rounded-full shadow-2xs">
                       {brand}
                     </span>
                   )}
-                  {category && (
-                    <span className="bg-indigo-50 text-indigo-700 text-xs font-semibold px-3 py-1 rounded-full border border-indigo-100">
-                      {category}
+                </div>
+              </div>
+
+              {/* Thumbnail Gallery Underneath */}
+              {galleryImages.length > 1 && (
+                <div className="flex items-center gap-2.5 overflow-x-auto py-1 max-w-full no-scrollbar">
+                  {galleryImages.map((img, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => setSelectedImage(img)}
+                      className={`w-14 h-14 rounded-xl p-1.5 bg-slate-50 border transition-all shrink-0 cursor-pointer ${
+                        selectedImage === img
+                          ? 'border-indigo-600 ring-2 ring-indigo-500/20 shadow-xs'
+                          : 'border-slate-200 hover:border-slate-400 opacity-70 hover:opacity-100'
+                      }`}
+                      aria-label={`Select product image ${idx + 1}`}
+                    >
+                      <img src={img} alt="" className="w-full h-full object-contain" />
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* ------------------------------------------------------------------- */}
+            {/* CENTER COLUMN — PRODUCT INFORMATION                                 */}
+            {/* ------------------------------------------------------------------- */}
+            <div className="lg:col-span-4 flex flex-col justify-between space-y-5">
+              <div>
+                {/* Merchant Provider Badge */}
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="inline-flex items-center gap-1.5 text-xs font-bold bg-indigo-50 text-indigo-700 px-3 py-1 rounded-full border border-indigo-100">
+                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-600" />
+                    Available on {primaryMerchant}
+                  </span>
+                  {rawOffers.length > 1 && (
+                    <span className="text-xs font-semibold text-slate-500">
+                      + {rawOffers.length - 1} more {rawOffers.length === 2 ? 'store' : 'stores'}
                     </span>
                   )}
                 </div>
-              </div>
-            </div>
 
-            {/* Right: Product Header & Price Meta */}
-            <div className="lg:col-span-7 flex flex-col justify-between space-y-6">
-              <div>
-                <div className="flex items-center justify-between gap-4 mb-2">
-                  <span className="text-xs font-bold text-indigo-600 uppercase tracking-wider">
-                    Canonical Verified Product
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={handleCopyLink}
-                      className="p-2 text-slate-500 hover:text-indigo-600 bg-slate-100 hover:bg-slate-200 rounded-xl text-xs font-medium transition flex items-center gap-1.5"
-                      title="Share Product Link"
-                    >
-                      {copiedLink ? '✓ Copied' : '🔗 Share'}
-                    </button>
-                    <button
-                      onClick={handleSaveProduct}
-                      disabled={saveLoading}
-                      className={`p-2 rounded-xl text-xs font-medium transition flex items-center gap-1.5 ${
-                        saved
-                          ? 'bg-rose-50 text-rose-600 border border-rose-200'
-                          : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-                      }`}
-                      title={saved ? 'In Wishlist' : 'Save to Wishlist'}
-                    >
-                      {saved ? '❤️ Saved' : '🤍 Wishlist'}
-                    </button>
-                  </div>
-                </div>
-
-                <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight leading-snug">
+                {/* Full Canonical Product Name */}
+                <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight leading-snug">
                   {name}
                 </h1>
 
-                {/* Rating & Review counts */}
-                <div className="flex items-center gap-3 mt-3">
-                  {rating != null && (
-                    <div className="flex items-center gap-1 bg-amber-50 text-amber-900 border border-amber-200 px-2.5 py-1 rounded-lg text-sm font-bold">
-                      <span>★</span>
+                {/* Exact Selected Variant */}
+                <div className="flex flex-wrap items-center gap-2 mt-2.5">
+                  {specifications?.Storage && (
+                    <span className="text-xs font-bold bg-slate-100 text-slate-700 px-2.5 py-1 rounded-lg">
+                      {specifications.Storage}
+                    </span>
+                  )}
+                  {specifications?.RAM && (
+                    <span className="text-xs font-bold bg-slate-100 text-slate-700 px-2.5 py-1 rounded-lg">
+                      {specifications.RAM} RAM
+                    </span>
+                  )}
+                  {specifications?.Color && (
+                    <span className="text-xs font-bold bg-slate-100 text-slate-700 px-2.5 py-1 rounded-lg">
+                      {specifications.Color}
+                    </span>
+                  )}
+                </div>
+
+                {/* Rating & Review Count (ONLY when genuine data exists) */}
+                {hasGenuineRating && (
+                  <div className="flex items-center gap-2 mt-3">
+                    <div className="flex items-center gap-1 bg-amber-50 text-amber-900 border border-amber-200 px-2.5 py-0.5 rounded-md text-xs font-bold">
+                      <span className="text-amber-500">★</span>
                       <span>{Number(rating).toFixed(1)}</span>
                     </div>
-                  )}
-                  {reviewCount != null && (
-                    <span className="text-xs text-slate-500">
-                      Based on {reviewCount.toLocaleString()} customer reviews
-                    </span>
-                  )}
-                  <span className="text-xs text-slate-400">•</span>
-                  <span className="text-xs text-emerald-700 font-medium bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
-                    {offers.length} {offers.length === 1 ? 'Store Verified' : 'Stores Compared'}
+                    {hasGenuineReviews && (
+                      <span className="text-xs text-slate-500">
+                        ({reviewCount.toLocaleString()} verified ratings)
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Price Banner */}
+              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-1">
+                <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">
+                  Best Available Price
+                </span>
+                <div className="flex items-baseline gap-3">
+                  <span className="text-3xl font-black text-slate-900 tracking-tight">
+                    {effectiveBestPrice != null
+                      ? `₹${Number(effectiveBestPrice).toLocaleString('en-IN')}`
+                      : 'Check Stores'}
                   </span>
+                  {hasGenuineDiscount && (
+                    <>
+                      <span className="text-sm text-slate-400 line-through">
+                        ₹{Number(originalPrice).toLocaleString('en-IN')}
+                      </span>
+                      <span className="text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md">
+                        {genuineDiscountPct}% OFF
+                      </span>
+                    </>
+                  )}
                 </div>
               </div>
 
-              {/* Price Callout Banner */}
-              <div className="bg-gradient-to-r from-slate-900 to-indigo-950 text-white rounded-2xl p-6 shadow-md">
-                <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
-                  <div>
-                    <span className="text-xs font-semibold text-indigo-300 uppercase tracking-wider block">
-                      Best Available Price
-                    </span>
-                    <div className="flex items-baseline gap-3 mt-1">
-                      <span className="text-3xl sm:text-4xl font-black tracking-tight text-white">
-                        {currentLowestPrice != null
-                          ? `₹${Number(currentLowestPrice).toLocaleString('en-IN')}`
-                          : 'Check Stores'}
-                      </span>
-                      {cheapestMerchant && (
-                        <span className="text-xs font-bold bg-indigo-500/30 text-indigo-200 border border-indigo-400/30 px-2.5 py-1 rounded-md">
-                          Cheapest on {cheapestMerchant}
-                        </span>
-                      )}
+              {/* Variant Selectors (when genuine options exist) */}
+              {(specifications?.Storage || specifications?.Color) && (
+                <div className="space-y-3 pt-1">
+                  {specifications.Storage && (
+                    <div>
+                      <span className="text-xs font-bold text-slate-500 block mb-1.5">Storage Variant</span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          className="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-indigo-600 text-white shadow-2xs cursor-default"
+                        >
+                          {specifications.Storage}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  {specifications.Color && (
+                    <div>
+                      <span className="text-xs font-bold text-slate-500 block mb-1.5">Color</span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          className="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-slate-100 border border-slate-300 text-slate-800 cursor-default"
+                        >
+                          {specifications.Color}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Primary Action Buttons */}
+              <div className="space-y-2.5 pt-2">
+                <a
+                  href={primaryDealUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full py-3.5 px-5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-black rounded-xl transition duration-200 flex items-center justify-center gap-2 shadow-sm cursor-pointer"
+                >
+                  <span>Buy on {primaryMerchant}</span>
+                  <span>→</span>
+                </a>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setAlertOpen(true)}
+                    className="flex-1 py-2 px-3 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-xl transition flex items-center justify-center gap-1.5"
+                  >
+                    <span>🔔 Price Alert</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveProduct}
+                    disabled={saveLoading}
+                    className={`py-2 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 ${
+                      saved
+                        ? 'bg-rose-50 text-rose-600 border border-rose-200'
+                        : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                    }`}
+                  >
+                    <span>{saved ? '❤️ Saved' : '🤍 Wishlist'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleCopyLink}
+                    className="py-2 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition"
+                    title="Share Link"
+                  >
+                    {copiedLink ? '✓' : '🔗'}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* ------------------------------------------------------------------- */}
+            {/* RIGHT COLUMN — PRICE INTELLIGENCE (PRICEMETER PANEL)                */}
+            {/* Visible WITHOUT scrolling on desktop                                */}
+            {/* ------------------------------------------------------------------- */}
+            <div className="lg:col-span-4 bg-gradient-to-br from-slate-900 to-indigo-950 text-white rounded-3xl p-6 shadow-md border border-slate-800 flex flex-col justify-between space-y-5">
+              <div>
+                {/* Header */}
+                <div className="flex items-center justify-between gap-2 border-b border-indigo-900/80 pb-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xl">⚖️</span>
+                    <div>
+                      <h2 className="text-base font-black text-white leading-tight">
+                        Should you buy now?
+                      </h2>
+                      <span className="text-[11px] text-indigo-300">Statistical Price Meter</span>
                     </div>
                   </div>
-
-                  {/* Price vs historical average comparison */}
-                  {priceMeter && priceMeter.differenceFromAvg != null && (
-                    <div className="text-left sm:text-right">
-                      <span
-                        className={`text-xs font-bold px-3 py-1.5 rounded-lg inline-block ${
-                          Number(priceMeter.differenceFromAvg) <= 0
-                            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/30'
-                            : 'bg-rose-500/20 text-rose-300 border border-rose-400/30'
-                        }`}
-                      >
-                        {Number(priceMeter.differenceFromAvg) <= 0
-                          ? `₹${Math.abs(Number(priceMeter.differenceFromAvg)).toLocaleString('en-IN')} below historical average`
-                          : `₹${Number(priceMeter.differenceFromAvg).toLocaleString('en-IN')} above historical average`}
-                      </span>
-                    </div>
-                  )}
                 </div>
 
-                {/* Call to action triggers */}
-                <div className="mt-6 pt-5 border-t border-indigo-900/60 flex flex-wrap items-center gap-3">
-                  <button
-                    onClick={() => setAlertOpen(true)}
-                    className="flex-1 min-w-[200px] bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-3 px-5 rounded-xl transition duration-200 flex items-center justify-center gap-2 shadow-sm cursor-pointer"
-                  >
-                    <span>🔔 Set Price Drop Alert</span>
-                  </button>
-
-                  {offers.length > 0 && (
-                    <a
-                      href="#merchant-offers"
-                      className="bg-white/10 hover:bg-white/20 text-white font-semibold py-3 px-5 rounded-xl transition duration-200 flex items-center justify-center gap-2"
+                {/* Time-horizon Controls */}
+                <div className="mt-3.5 flex items-center justify-between gap-1 bg-white/10 p-1 rounded-xl">
+                  {TIME_HORIZONS.map((h) => (
+                    <button
+                      key={h.label}
+                      type="button"
+                      onClick={() => handleHorizonChange(h.period)}
+                      className={`flex-1 py-1 px-1.5 rounded-lg text-[11px] font-bold transition cursor-pointer text-center whitespace-nowrap ${
+                        meterHorizon === h.period
+                          ? 'bg-white text-indigo-950 shadow-xs'
+                          : 'text-indigo-200 hover:text-white'
+                      }`}
                     >
-                      <span>View All {offers.length} Store Deals ↓</span>
-                    </a>
-                  )}
+                      {h.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* PRICE METER GAUGE: 0 to 100 */}
+                <div className="mt-5 space-y-2">
+                  <div className="flex items-center justify-between text-[11px] font-bold text-indigo-300">
+                    <span>Buying Opportunity Gauge</span>
+                    {hasSufficientHistory && meterScore != null && (
+                      <span className="text-white font-mono bg-indigo-500/30 px-2 py-0.5 rounded-md border border-indigo-400/30">
+                        {meterScore} / 100
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Visual Track Divided into 3 Zones */}
+                  <div className="relative pt-5 pb-1">
+                    {/* Score Pointer / Indicator */}
+                    {hasSufficientHistory && meterScore != null && (
+                      <div
+                        className="absolute top-0 transform -translate-x-1/2 transition-all duration-500 flex flex-col items-center z-10"
+                        style={{ left: `${Math.max(4, Math.min(96, meterScore))}%` }}
+                      >
+                        <div className="w-0 h-0 border-l-[5px] border-l-transparent border-r-[5px] border-r-transparent border-t-[6px] border-t-white" />
+                      </div>
+                    )}
+
+                    <div className="h-3.5 rounded-full overflow-hidden flex bg-slate-800 shadow-inner">
+                      <div className="w-[35%] bg-rose-500" title="Poor buying time (0-35)" />
+                      <div className="w-[34%] bg-amber-400" title="Average (36-69)" />
+                      <div className="w-[31%] bg-emerald-500" title="Good buying time (70-100)" />
+                    </div>
+
+                    {/* Zone Labels */}
+                    <div className="flex justify-between items-center text-[10px] font-bold text-slate-300 mt-1.5 px-0.5">
+                      <span className="text-rose-400">Poor buying time</span>
+                      <span className="text-amber-300">Average</span>
+                      <span className="text-emerald-400">Good buying time</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Recommendation Classification */}
+                <div className="mt-4 pt-4 border-t border-indigo-900/60 space-y-1.5">
+                  <span className="text-[10px] font-bold text-indigo-300 uppercase tracking-wider block">
+                    Our Recommendation
+                  </span>
+
+                  <div className="flex items-center gap-2">
+                    <span className={`text-xs font-black px-3 py-1 rounded-lg border ${recBadge.colorClass}`}>
+                      {recBadge.label}
+                    </span>
+                  </div>
+
+                  {/* Short Explanation Statement */}
+                  <p className="text-xs text-slate-300 leading-relaxed pt-1">
+                    {hasSufficientHistory
+                      ? (priceMeter.summaryText || priceMeter.advice)
+                      : 'Not enough price history yet to calculate Price Meter.'}
+                  </p>
+                </div>
+              </div>
+
+              {/* REAL PRICE STATS (All strictly from ProductPriceHistory database records) */}
+              <div className="pt-3 border-t border-indigo-900/60">
+                <span className="text-[10px] font-bold text-indigo-300 uppercase tracking-wider block mb-2">
+                  Historical Price Stats
+                </span>
+
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div className="bg-white/5 border border-white/10 rounded-xl p-2.5">
+                    <span className="text-[10px] text-slate-400 block font-medium">Highest Price</span>
+                    <span className="font-mono font-bold text-white text-sm">
+                      {hasSufficientHistory && (priceMeter.historicalMaximum != null || priceMeter.historicalHighest != null)
+                        ? `₹${Number(priceMeter.historicalMaximum ?? priceMeter.historicalHighest).toLocaleString('en-IN')}`
+                        : '—'}
+                    </span>
+                  </div>
+
+                  <div className="bg-white/5 border border-white/10 rounded-xl p-2.5">
+                    <span className="text-[10px] text-slate-400 block font-medium">Average Price</span>
+                    <span className="font-mono font-bold text-white text-sm">
+                      {hasSufficientHistory && priceMeter.historicalAverage != null
+                        ? `₹${Number(priceMeter.historicalAverage).toLocaleString('en-IN')}`
+                        : '—'}
+                    </span>
+                  </div>
+
+                  <div className="bg-white/5 border border-white/10 rounded-xl p-2.5">
+                    <span className="text-[10px] text-slate-400 block font-medium">Lowest Price</span>
+                    <span className="font-mono font-bold text-emerald-400 text-sm">
+                      {hasSufficientHistory && (priceMeter.historicalMinimum != null || priceMeter.historicalLowest != null)
+                        ? `₹${Number(priceMeter.historicalMinimum ?? priceMeter.historicalLowest).toLocaleString('en-IN')}`
+                        : '—'}
+                    </span>
+                  </div>
+
+                  <div className="bg-white/5 border border-white/10 rounded-xl p-2.5">
+                    <span className="text-[10px] text-slate-400 block font-medium">Current Price</span>
+                    <span className="font-mono font-bold text-indigo-200 text-sm">
+                      {effectiveBestPrice != null
+                        ? `₹${Number(effectiveBestPrice).toLocaleString('en-IN')}`
+                        : '—'}
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
         </section>
 
-        {/* 3. Price Meter & Statistical Price Intelligence */}
-        <section className="bg-white rounded-3xl border border-slate-200 shadow-xs p-6 sm:p-8 space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-xl">📊</span>
-                <h2 className="text-xl font-black text-slate-900">Statistical Price Meter</h2>
-                <span className={`text-xs font-extrabold px-3 py-0.5 rounded-full border ${meterBadge.bg}`}>
-                  {meterBadge.label}
-                </span>
-              </div>
-              <p className="text-xs sm:text-sm text-slate-500 mt-1">
-                Deterministic statistical analysis calculated against verified historical store recordings.
-              </p>
-            </div>
+        {/* ========================================================================= */}
+        {/* AFTER HERO SECTION IN EXACT ORDER:                                       */}
+        {/* 1. COMPARE PRICES                                                        */}
+        {/* 2. PRICE HISTORY                                                         */}
+        {/* 3. PRICE INSIGHTS / ML PREDICTION                                        */}
+        {/* 4. PRODUCT SPECIFICATIONS                                                */}
+        {/* 5. ALTERNATIVE PRODUCTS                                                  */}
+        {/* ========================================================================= */}
 
-            {priceMeter && priceMeter.percentile != null && (
-              <div className="text-left sm:text-right bg-slate-50 px-4 py-2 rounded-xl border border-slate-100">
-                <span className="text-[11px] font-semibold text-slate-400 block uppercase">Price Percentile</span>
-                <span className="text-lg font-black text-slate-800">{priceMeter.percentile}th percentile</span>
-              </div>
-            )}
-          </div>
-
-          {/* Visual Gauge Bar */}
-          <div className="space-y-3 pt-2">
-            <div className="relative pt-6 pb-2">
-              {/* Needle Indicator */}
-              <div
-                className="absolute top-0 transform -translate-x-1/2 transition-all duration-500 flex flex-col items-center z-10"
-                style={{ left: `${getMeterNeedlePercent()}%` }}
-              >
-                <span className="bg-slate-900 text-white text-[10px] font-bold px-2 py-0.5 rounded shadow-xs whitespace-nowrap">
-                  Current: ₹{Number(currentLowestPrice || 0).toLocaleString('en-IN')}
-                </span>
-                <div className="w-0 h-0 border-l-[5px] border-l-transparent border-r-[5px] border-r-transparent border-t-[6px] border-t-slate-900"></div>
-              </div>
-
-              {/* 4 Multi-color Gauge Segments */}
-              <div className="h-4 rounded-full overflow-hidden flex bg-slate-200 shadow-inner">
-                <div className="w-1/4 bg-emerald-500" title="Excellent Deal (Lowest Range)" />
-                <div className="w-1/4 bg-blue-500" title="Good Price" />
-                <div className="w-1/4 bg-amber-400" title="Average Price" />
-                <div className="w-1/4 bg-rose-500" title="High Price" />
-              </div>
-
-              {/* Segment Labels */}
-              <div className="grid grid-cols-4 text-center mt-2 text-[11px] font-bold text-slate-500">
-                <span className="text-emerald-700">Excellent Deal</span>
-                <span className="text-blue-700">Good Price</span>
-                <span className="text-amber-700">Average</span>
-                <span className="text-rose-700">High Price</span>
-              </div>
-            </div>
-
-            {/* Advice Statement */}
-            {priceMeter?.advice && (
-              <div className="bg-indigo-50/70 border border-indigo-100 rounded-xl p-4 flex items-start gap-3 text-xs sm:text-sm text-indigo-950">
-                <span className="text-lg shrink-0">💡</span>
-                <div className="leading-relaxed font-medium">{priceMeter.advice}</div>
-              </div>
-            )}
-          </div>
-
-          {/* Price Statistics Grid */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-4 border-t border-slate-100">
-            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 text-center">
-              <span className="text-xs font-semibold text-slate-500 block">Lowest Recorded</span>
-              <span className="text-lg font-black text-emerald-600 mt-0.5 block">
-                {priceMeter?.historicalLowest
-                  ? `₹${Number(priceMeter.historicalLowest).toLocaleString('en-IN')}`
-                  : '—'}
-              </span>
-            </div>
-
-            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 text-center">
-              <span className="text-xs font-semibold text-slate-500 block">Average Price</span>
-              <span className="text-lg font-black text-slate-800 mt-0.5 block">
-                {priceMeter?.historicalAverage
-                  ? `₹${Number(priceMeter.historicalAverage).toLocaleString('en-IN')}`
-                  : '—'}
-              </span>
-            </div>
-
-            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 text-center">
-              <span className="text-xs font-semibold text-slate-500 block">Highest Recorded</span>
-              <span className="text-lg font-black text-rose-600 mt-0.5 block">
-                {priceMeter?.historicalHighest
-                  ? `₹${Number(priceMeter.historicalHighest).toLocaleString('en-IN')}`
-                  : '—'}
-              </span>
-            </div>
-
-            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 text-center">
-              <span className="text-xs font-semibold text-slate-500 block">Difference vs Avg</span>
-              <span
-                className={`text-lg font-black mt-0.5 block ${
-                  Number(priceMeter?.differencePercentage || 0) <= 0
-                    ? 'text-emerald-600'
-                    : 'text-rose-600'
-                }`}
-              >
-                {priceMeter?.differencePercentage != null
-                  ? `${priceMeter.differencePercentage > 0 ? '+' : ''}${priceMeter.differencePercentage}%`
-                  : '—'}
-              </span>
-            </div>
-          </div>
-        </section>
-
-        {/* 4. Price History Graph Section */}
-        <section className="bg-white rounded-3xl border border-slate-200 shadow-xs p-6 sm:p-8 space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-xl">📈</span>
-                <h2 className="text-xl font-black text-slate-900">Historical Price Trend</h2>
-              </div>
-              <p className="text-xs sm:text-sm text-slate-500 mt-1">
-                Real price history recorded from merchant listings over time.
-              </p>
-            </div>
-
-            {/* Range Selector Buttons */}
-            <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl self-start sm:self-auto overflow-x-auto">
-              {PERIOD_OPTIONS.map((opt) => (
-                <button
-                  key={opt.value}
-                  onClick={() => handlePeriodChange(opt.value)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer whitespace-nowrap ${
-                    historyPeriod === opt.value
-                      ? 'bg-white text-indigo-600 shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Interactive Chart Canvas */}
-          <div className="h-[280px] sm:h-[340px] w-full relative">
-            {historyLoading ? (
-              <div className="h-full flex items-center justify-center">
-                <Spinner />
-              </div>
-            ) : pricePoints.length < 2 ? (
-              <div className="h-full flex flex-col items-center justify-center text-center p-6 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
-                <span className="text-3xl mb-2">⏱️</span>
-                <h3 className="font-bold text-slate-700 text-sm">Accumulating Price Points</h3>
-                <p className="text-xs text-slate-500 max-w-sm mt-1">
-                  We have captured {pricePoints.length} verified price record for this canonical product. As live prices are checked, full trend graphs will appear.
-                </p>
-              </div>
-            ) : (
-              <Line data={chartData} options={chartOptions} />
-            )}
-          </div>
-        </section>
-
-        {/* 5. Merchant Price Comparison Table */}
-        <section id="merchant-offers" className="bg-white rounded-3xl border border-slate-200 shadow-xs p-6 sm:p-8 space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        {/* ------------------------------------------------------------------------- */}
+        {/* 1. COMPARE PRICES                                                         */}
+        {/* ------------------------------------------------------------------------- */}
+        <section id="compare-prices" className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6 sm:p-8 space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
             <div>
               <div className="flex items-center gap-2">
                 <span className="text-xl">🏪</span>
                 <h2 className="text-xl font-black text-slate-900">Compare Merchant Prices</h2>
                 <span className="text-xs font-bold bg-indigo-50 text-indigo-700 px-2.5 py-0.5 rounded-full border border-indigo-100">
-                  {offers.length} Store Offers
+                  {rawOffers.length} Store Offers
                 </span>
               </div>
               <p className="text-xs sm:text-sm text-slate-500 mt-1">
-                Verified live merchant offers for this exact hardware variant.
+                Verified multi-store pricing across authentic merchants for this exact variant.
               </p>
             </div>
 
-            {/* Sorting Dropdown */}
+            {/* Sorting Filter */}
             <div className="flex items-center gap-2 self-start sm:self-auto">
               <label htmlFor="merchant-sort" className="text-xs font-bold text-slate-500">
                 Sort by:
@@ -705,7 +878,6 @@ export const ProductDetailsPage = () => {
             </div>
           </div>
 
-          {/* Offers List */}
           <div className="space-y-3">
             {sortedOffers.map((offer, idx) => {
               const isCheapestOffer = idx === 0 && offerSortBy === 'price_asc';
@@ -715,15 +887,15 @@ export const ProductDetailsPage = () => {
               return (
                 <div
                   key={offer.id || `${offer.merchant}-${idx}`}
-                  className={`p-4 sm:p-5 rounded-2xl border transition-all duration-200 flex flex-col md:flex-row md:items-center justify-between gap-4 ${
+                  className={`p-4 sm:p-5 rounded-2xl border transition-all flex flex-col md:flex-row md:items-center justify-between gap-4 ${
                     isCheapestOffer
                       ? 'bg-indigo-50/40 border-indigo-200 shadow-2xs ring-1 ring-indigo-500/10'
                       : 'bg-white border-slate-200 hover:border-slate-300'
                   }`}
                 >
-                  {/* Left: Merchant & Store info */}
+                  {/* Store Name & Logo */}
                   <div className="flex items-center gap-4 min-w-[200px]">
-                    <div className="w-12 h-12 rounded-xl bg-slate-100 flex items-center justify-center text-xl font-bold text-slate-700 uppercase shrink-0">
+                    <div className="w-12 h-12 rounded-xl bg-slate-100 border border-slate-200/80 flex items-center justify-center text-lg font-black text-slate-700 uppercase shrink-0">
                       {offer.merchant?.substring(0, 2) || 'ST'}
                     </div>
                     <div>
@@ -731,7 +903,7 @@ export const ProductDetailsPage = () => {
                         <span className="font-extrabold text-slate-900 text-base">{offer.merchant}</span>
                         {isCheapestOffer && (
                           <span className="bg-emerald-600 text-white text-[10px] font-black uppercase px-2 py-0.5 rounded-full shadow-2xs">
-                            Best Deal
+                            Cheapest Deal
                           </span>
                         )}
                         {isDemo && <DemoBadge />}
@@ -741,17 +913,17 @@ export const ProductDetailsPage = () => {
                         <div className="flex items-center gap-1 text-xs text-amber-600 font-semibold mt-0.5">
                           <span>★</span>
                           <span>{Number(offer.rating).toFixed(1)}</span>
-                          <span className="text-slate-400 font-normal">store rating</span>
+                          <span className="text-slate-400 font-normal">rating</span>
                         </div>
                       )}
                     </div>
                   </div>
 
-                  {/* Middle: Delivery & Stock */}
+                  {/* Delivery & Stock */}
                   <div className="flex flex-wrap items-center gap-4 text-xs text-slate-600">
                     <div className="flex items-center gap-1.5">
                       <span className="text-base">🚚</span>
-                      <span className="font-medium">{offer.deliveryText || 'Standard Delivery'}</span>
+                      <span className="font-medium">{offer.deliveryText || offer.delivery || 'Standard Delivery'}</span>
                     </div>
 
                     <div className="flex items-center gap-1.5">
@@ -766,7 +938,7 @@ export const ProductDetailsPage = () => {
                     </div>
                   </div>
 
-                  {/* Right: Price & CTA */}
+                  {/* Price & Primary Link */}
                   <div className="flex items-center justify-between md:justify-end gap-5 pt-3 md:pt-0 border-t md:border-t-0 border-slate-100">
                     <div className="text-left md:text-right">
                       <div className="text-2xl font-black text-slate-900">
@@ -799,110 +971,126 @@ export const ProductDetailsPage = () => {
           </div>
         </section>
 
-        {/* 6. Buy / Wait Intelligence: Statistical vs ML Forecast */}
-        <section className="bg-white rounded-3xl border border-slate-200 shadow-xs p-6 sm:p-8 space-y-6">
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-xl">🤖</span>
-              <h2 className="text-xl font-black text-slate-900">Purchase Timing Intelligence</h2>
+        {/* ------------------------------------------------------------------------- */}
+        {/* 2. PRICE HISTORY                                                          */}
+        {/* Full-width interactive line chart with real database observations         */}
+        {/* ------------------------------------------------------------------------- */}
+        <section id="price-history" className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6 sm:p-8 space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-xl">📈</span>
+                <h2 className="text-xl font-black text-slate-900">Price History</h2>
+              </div>
+              <p className="text-xs sm:text-sm text-slate-500 mt-1">
+                Authentic longitudinal price recordings from real store offerings.
+              </p>
             </div>
-            <p className="text-xs sm:text-sm text-slate-500 mt-1">
-              Transparent intelligence clearly distinguishing empirical price statistics from ML forecasting.
-            </p>
+
+            {/* Range Selectors: 7D, 30D, 90D, 6M, 1Y, ALL */}
+            <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl self-start sm:self-auto overflow-x-auto">
+              {HISTORY_RANGES.map((r) => (
+                <button
+                  key={r.value}
+                  type="button"
+                  onClick={() => handleHistoryRangeChange(r.value)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer whitespace-nowrap ${
+                    historyRange === r.value
+                      ? 'bg-white text-indigo-600 shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  {r.label}
+                </button>
+              ))}
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Card A: Statistical Buy/Wait Assessment */}
-            <div className="bg-slate-50 rounded-2xl border border-slate-200 p-6 flex flex-col justify-between">
-              <div>
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                    Empirical Timing Indicator
-                  </span>
-                  <span className="text-xs font-semibold bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-md">
-                    Deterministic
-                  </span>
-                </div>
-
-                <h3 className="text-lg font-bold text-slate-900 mb-2">
-                  {priceMeter?.classification === 'EXCELLENT_DEAL' || priceMeter?.classification === 'GOOD_PRICE'
-                    ? '🟢 Recommendation: Buy Now'
-                    : priceMeter?.classification === 'HIGH_PRICE'
-                    ? '🔴 Recommendation: Wait for Price Drop'
-                    : '🟡 Recommendation: Fair Market Price'}
-                </h3>
-
-                <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
-                  {priceMeter?.advice ||
-                    'Currently comparing prices across multiple merchants. Prices fluctuate based on store promotions and bank discounts.'}
+          {/* Interactive Chart Canvas */}
+          <div className="h-[300px] sm:h-[360px] w-full relative">
+            {historyLoading ? (
+              <div className="h-full flex items-center justify-center">
+                <Spinner />
+              </div>
+            ) : pricePoints.length === 0 ? (
+              <div className="h-full flex flex-col items-center justify-center text-center p-6 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                <span className="text-3xl mb-2">⏱️</span>
+                <h3 className="font-bold text-slate-700 text-sm">Price tracking has just started for this product.</h3>
+                <p className="text-xs text-slate-500 max-w-sm mt-1">
+                  We are now polling stores regularly. Verified trend curves will be plotted as price points accumulate.
                 </p>
               </div>
-
-              <div className="mt-6 pt-4 border-t border-slate-200/80 text-xs text-slate-500 flex items-center justify-between">
-                <span>Calculated from store observations</span>
-                <span className="font-bold text-slate-700">100% Verified</span>
-              </div>
-            </div>
-
-            {/* Card B: ML Model Price Forecast */}
-            <div className="bg-gradient-to-br from-slate-900 to-indigo-950 text-white rounded-2xl p-6 flex flex-col justify-between">
-              <div>
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-xs font-bold text-indigo-300 uppercase tracking-wider">
-                    Machine Learning Forecast
-                  </span>
-                  <span className="text-xs font-semibold bg-indigo-500/30 text-indigo-200 border border-indigo-400/30 px-2 py-0.5 rounded-md">
-                    Predictive Model
-                  </span>
-                </div>
-
-                {mlPrediction && mlPrediction.confidenceScore && Number(mlPrediction.confidenceScore) > 0.5 ? (
-                  <>
-                    <h3 className="text-lg font-bold text-white mb-2">
-                      Trend Forecast: {mlPrediction.predictedTrend || 'Stable'}
-                    </h3>
-                    <p className="text-xs sm:text-sm text-slate-300 leading-relaxed mb-4">
-                      {mlPrediction.summary ||
-                        `Model projects price to remain near ₹${Number(mlPrediction.predictedPrice || currentLowestPrice).toLocaleString('en-IN')} over the next 7–14 days.`}
-                    </p>
-                    <div className="text-xs text-indigo-300 flex items-center gap-2">
-                      <span>Model Confidence:</span>
-                      <strong className="text-white">
-                        {Math.round(Number(mlPrediction.confidenceScore) * 100)}%
-                      </strong>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <h3 className="text-lg font-bold text-white mb-2">Collecting Longitudinal History</h3>
-                    <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
-                      Our ML price prediction model requires multi-week price point density before generating high-confidence forecasts. No fabricated predictions are shown.
-                    </p>
-                    <div className="mt-4 text-xs text-indigo-300 flex items-center gap-1.5">
-                      <span>✓ Strictly authentic ML data policy</span>
-                    </div>
-                  </>
-                )}
-              </div>
-
-              <div className="mt-6 pt-4 border-t border-indigo-900/60 text-xs text-indigo-300 flex items-center justify-between">
-                <span>Predictive Engine</span>
-                <span className="font-semibold text-white">CompareHub ML</span>
-              </div>
-            </div>
+            ) : (
+              <Line data={chartData} options={chartOptions} />
+            )}
           </div>
         </section>
 
-        {/* 7. Product Specifications & Attributes */}
+        {/* ------------------------------------------------------------------------- */}
+        {/* 3. PRICE INSIGHTS / ML PREDICTION                                         */}
+        {/* Strictly separated from statistical price meter                            */}
+        {/* ------------------------------------------------------------------------- */}
+        <section id="price-insights" className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6 sm:p-8 space-y-6">
+          <div className="border-b border-slate-100 pb-4">
+            <div className="flex items-center gap-2">
+              <span className="text-xl">🧠</span>
+              <h2 className="text-xl font-black text-slate-900">Price Insights & ML Prediction</h2>
+            </div>
+            <p className="text-xs sm:text-sm text-slate-500 mt-1">
+              Forward-looking machine learning forecast distinctly separated from empirical historical stats.
+            </p>
+          </div>
+
+          <div className="bg-gradient-to-br from-slate-900 to-indigo-950 text-white rounded-2xl p-6 sm:p-7 shadow-sm">
+            {mlPrediction && mlPrediction.confidenceScore && Number(mlPrediction.confidenceScore) > 0.5 ? (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-indigo-300 uppercase tracking-wider">
+                    Predictive Horizon: 7–14 Days
+                  </span>
+                  <span className="text-xs font-bold bg-indigo-500/30 text-indigo-200 border border-indigo-400/30 px-2.5 py-0.5 rounded-full">
+                    Confidence: {Math.round(Number(mlPrediction.confidenceScore) * 100)}%
+                  </span>
+                </div>
+
+                <div className="text-2xl font-black tracking-tight text-white">
+                  Expected Trend: {mlPrediction.predictedTrend || 'STABLE'}
+                </div>
+
+                <p className="text-xs sm:text-sm text-slate-300 leading-relaxed max-w-2xl">
+                  {mlPrediction.summary ||
+                    `Model anticipates price to stay around ₹${Number(mlPrediction.predictedPrice || effectiveBestPrice).toLocaleString('en-IN')}.`}
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-indigo-300 text-xs font-bold uppercase tracking-wider">
+                  <span>ML Forecasting Engine</span>
+                </div>
+                <h3 className="text-lg font-bold text-white">Longitudinal Price Data Accumulating</h3>
+                <p className="text-xs sm:text-sm text-slate-300 leading-relaxed max-w-2xl">
+                  ML price prediction models require multi-week price point density before generating confident forecasts. No fabricated predictions are shown.
+                </p>
+                <div className="pt-2 text-xs text-indigo-300">
+                  <span>✓ CompareHub authentic prediction guarantee</span>
+                </div>
+              </div>
+            )}
+          </div>
+        </section>
+
+        {/* ------------------------------------------------------------------------- */}
+        {/* 4. PRODUCT SPECIFICATIONS                                                 */}
+        {/* ------------------------------------------------------------------------- */}
         {specifications && Object.keys(specifications).length > 0 && (
-          <section className="bg-white rounded-3xl border border-slate-200 shadow-xs p-6 sm:p-8 space-y-6">
-            <div>
+          <section id="specifications" className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6 sm:p-8 space-y-6">
+            <div className="border-b border-slate-100 pb-4">
               <div className="flex items-center gap-2">
                 <span className="text-xl">⚙️</span>
-                <h2 className="text-xl font-black text-slate-900">Specifications & Attributes</h2>
+                <h2 className="text-xl font-black text-slate-900">Product Specifications</h2>
               </div>
               <p className="text-xs sm:text-sm text-slate-500 mt-1">
-                Verified technical specifications extracted for this canonical product.
+                Verified attributes and hardware specifications.
               </p>
             </div>
 
@@ -921,13 +1109,15 @@ export const ProductDetailsPage = () => {
           </section>
         )}
 
-        {/* 8. Alternative Products */}
+        {/* ------------------------------------------------------------------------- */}
+        {/* 5. ALTERNATIVE PRODUCTS                                                   */}
+        {/* ------------------------------------------------------------------------- */}
         {alternatives && alternatives.length > 0 && (
-          <section className="bg-white rounded-3xl border border-slate-200 shadow-xs p-6 sm:p-8 space-y-6">
-            <div>
+          <section id="alternatives" className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6 sm:p-8 space-y-6">
+            <div className="border-b border-slate-100 pb-4">
               <div className="flex items-center gap-2">
                 <span className="text-xl">🔄</span>
-                <h2 className="text-xl font-black text-slate-900">Similar & Alternative Products</h2>
+                <h2 className="text-xl font-black text-slate-900">Alternative Products</h2>
               </div>
               <p className="text-xs sm:text-sm text-slate-500 mt-1">
                 Explore closely related alternatives in the same category.
@@ -977,7 +1167,7 @@ export const ProductDetailsPage = () => {
         )}
       </div>
 
-      {/* Inline Price Alert Modal */}
+      {/* Inline Price Drop Alert Modal */}
       {alertOpen && (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 relative animate-in fade-in zoom-in-95 duration-200">
@@ -995,7 +1185,7 @@ export const ProductDetailsPage = () => {
               </div>
               <div>
                 <h3 className="text-lg font-black text-slate-900">Set Price Drop Alert</h3>
-                <p className="text-xs text-slate-500">We will notify you immediately when price drops.</p>
+                <p className="text-xs text-slate-500">Instant notification when prices fall below target.</p>
               </div>
             </div>
 
@@ -1020,7 +1210,7 @@ export const ProductDetailsPage = () => {
                     required
                   />
                   <span className="text-[11px] text-slate-400 mt-1 block">
-                    Current lowest price: ₹{Number(currentLowestPrice || 0).toLocaleString('en-IN')}
+                    Current lowest price: ₹{Number(effectiveBestPrice || 0).toLocaleString('en-IN')}
                   </span>
                 </div>
 
