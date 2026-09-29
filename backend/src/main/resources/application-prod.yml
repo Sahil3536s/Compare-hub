@@ -65,3 +65,8 @@ app:
       enabled: ${PROVIDER_OPEN_PRODUCTS_ENABLED:true}
       api-url: ${OPEN_PRODUCTS_API_URL:https://dummyjson.com/products/search}
       timeout-ms: ${OPEN_PRODUCTS_TIMEOUT_MS:4000}
+    aviationstack:
+      enabled: ${PROVIDER_AVIATIONSTACK_ENABLED:true}
+      api-key: ${AVIATIONSTACK_API_KEY:}
+      api-url: ${AVIATIONSTACK_API_URL:https://api.aviationstack.com/v1/flights}
+      timeout-ms: ${AVIATIONSTACK_TIMEOUT_MS:4000}

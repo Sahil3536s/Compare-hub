@@ -38,7 +38,7 @@ app:
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:3000}
   jwt:
-    secret: ${JWT_SECRET:404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970}
+    secret: ${JWT_SECRET}
     expiration-ms: ${JWT_EXPIRATION_MS:86400000}
   cache:
     redis:
@@ -63,3 +63,8 @@ app:
       enabled: ${PROVIDER_OPEN_PRODUCTS_ENABLED:true}
       api-url: ${OPEN_PRODUCTS_API_URL:https://dummyjson.com/products/search}
       timeout-ms: ${OPEN_PRODUCTS_TIMEOUT_MS:3500}
+    aviationstack:
+      enabled: ${PROVIDER_AVIATIONSTACK_ENABLED:true}
+      api-key: ${AVIATIONSTACK_API_KEY:}
+      api-url: ${AVIATIONSTACK_API_URL:https://api.aviationstack.com/v1/flights}
+      timeout-ms: ${AVIATIONSTACK_TIMEOUT_MS:4000}

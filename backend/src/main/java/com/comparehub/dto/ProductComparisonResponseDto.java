@@ -8,6 +8,7 @@ import lombok.NoArgsConstructor;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
+import com.comparehub.dto.ProviderLog;
 
 @Data
 @Builder
@@ -32,14 +33,17 @@ public class ProductComparisonResponseDto {
 
     private String statusMessage;
 
-    @Builder.Default
-    private List<String> successfulProviders = new ArrayList<>();
+   @Builder.Default
+private List<String> successfulProviders = new ArrayList<>();
 
-    @Builder.Default
-    private List<String> failedProviders = new ArrayList<>();
+@Builder.Default
+private List<String> failedProviders = new ArrayList<>();
 
-    @Builder.Default
-    private Integer page = 1;
+@Builder.Default
+private List<ProviderLog> providerDiagnostics = new ArrayList<>();
+
+@Builder.Default
+private Integer page = 0;
 
     @Builder.Default
     private Integer pageSize = 20;

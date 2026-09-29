@@ -120,11 +120,20 @@ public class FlightComparisonServiceImpl implements FlightComparisonService {
             log.warn("Flight AI recommendation skipped: {}", e.getMessage());
         }
 
+        boolean hasLiveOffers = rankedOffers.stream()
+                .anyMatch(o -> Boolean.TRUE.equals(o.getLive()) || "LIVE".equalsIgnoreCase(o.getDataSource()));
+        String dataMode = hasLiveOffers ? "LIVE" : "DEMO";
+        String dataDisclaimer = hasLiveOffers
+                ? "Live flight tracking & scheduling provided by Aviationstack."
+                : "Displaying simulated flight schedules for demonstration.";
+
         return FlightComparisonResponseDto.builder()
                 .origin(request.getOrigin())
                 .destination(request.getDestination())
                 .departureDate(request.getDepartureDate())
                 .returnDate(request.getReturnDate())
+                .dataMode(dataMode)
+                .dataDisclaimer(dataDisclaimer)
                 .totalOffers(rankedOffers.size())
                 .cheapestPrice(cheapestPrice)
                 .fastestDurationMinutes(fastestDuration)

@@ -30,6 +30,14 @@ public class NormalizedFlightOfferDto {
     private String checkInBaggage; // e.g. "15 kg Check-in"
     private String airlineLogo; // e.g. "IndiGo" or SVG/URL
 
+// DEMO metadata
+@Builder.Default
+private String dataSource = "DEMO"; // DEMO or LIVE source identifier
+@Builder.Default
+private Boolean live = false; // true if data from live provider
+
+// Badges calculated by FlightRankingService
+
     // Badges calculated by FlightRankingService
     @Builder.Default
     private Boolean isCheapest = false;

@@ -42,6 +42,12 @@ app:
     mapbox:
       access-token: ${MAPBOX_ACCESS_TOKEN:}
       country-filter: ${LOCATION_COUNTRY_FILTER:in}
+  providers:
+    aviationstack:
+      enabled: ${PROVIDER_AVIATIONSTACK_ENABLED:true}
+      api-key: ${AVIATIONSTACK_API_KEY:}
+      api-url: ${AVIATIONSTACK_API_URL:https://api.aviationstack.com/v1/flights}
+      timeout-ms: ${AVIATIONSTACK_TIMEOUT_MS:4000}
 
 # Resilience4j Defaults
 resilience4j:

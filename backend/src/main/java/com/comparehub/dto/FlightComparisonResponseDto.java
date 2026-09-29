@@ -19,6 +19,9 @@ public class FlightComparisonResponseDto {
     private String destination;
     private String departureDate;
     private String returnDate;
+    private String dataMode; // DEMO or LIVE
+    private String dataDisclaimer; // explanation of demo data
+
     private Integer totalOffers;
     private BigDecimal cheapestPrice;
     private Integer fastestDurationMinutes;

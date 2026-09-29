@@ -191,8 +191,14 @@ public class ProductSearchOrchestratorImpl implements ProductSearchOrchestrator 
         String status = "SUCCESS";
         String statusMessage = null;
         if (totalOffers == 0) {
-            status = "EMPTY";
-            statusMessage = "No products were returned for this search.";
+            if (successfulProviders.isEmpty() && !failedProviders.isEmpty()) {
+                status = "FAILED";
+                statusMessage = "All providers failed to return results.";
+            } else {
+                // No offers but at least one provider succeeded – treat as honest success.
+                status = "SUCCESS";
+                statusMessage = "No products matched the query, but providers responded successfully.";
+            }
         } else if (!failedProviders.isEmpty() && !successfulProviders.isEmpty()) {
             status = "PARTIAL_SUCCESS";
             statusMessage = "Some stores couldn't be reached. Showing available results.";
@@ -200,6 +206,7 @@ public class ProductSearchOrchestratorImpl implements ProductSearchOrchestrator 
             status = "FAILED";
             statusMessage = "All store providers are currently unavailable. Please try again.";
         }
+
 
         return ProductComparisonResponseDto.builder()
                 .query(rawQuery)
@@ -213,6 +220,7 @@ public class ProductSearchOrchestratorImpl implements ProductSearchOrchestrator 
                 .statusMessage(statusMessage)
                 .successfulProviders(new ArrayList<>(successfulProviders))
                 .failedProviders(new ArrayList<>(failedProviders))
+                .providerDiagnostics(new ArrayList<>())
                 .page(page)
                 .pageSize(pageSize)
                 .totalPages(totalPages)

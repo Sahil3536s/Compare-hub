@@ -19,6 +19,7 @@ import BudgetAssistantPage from './pages/BudgetAssistantPage';
 import DecisionEnginePage from './pages/DecisionEnginePage';
 import NotFoundPage from './pages/NotFoundPage';
 import { ROUTES } from './utils/constants';
+import PriceHistoryPage from './pages/PriceHistoryPage';
 
 function App() {
   return (
@@ -42,6 +43,8 @@ function App() {
               <Route path="savings" element={<SavingsDashboardPage />} />
               <Route path="history" element={<HistoryPage />} />
               <Route path="notifications" element={<NotificationsPage />} />
+            <Route path="price-history/:productId" element={<PriceHistoryPage />} />
+            <Route path="*" element={<NotFoundPage />} />
               <Route path="*" element={<NotFoundPage />} />
             </Route>
           </Routes>

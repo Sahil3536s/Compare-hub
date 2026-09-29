@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { searchProducts } from '../services/productService';
 import SearchBar from '../components/SearchBar';
-import ProductOfferCard from '../components/ProductOfferCard';
+import ProductCard from '../components/shopping/ProductCard';
 import ProductFilterPanel from '../components/shopping/ProductFilterPanel';
 import PriceHistoryModal from '../components/PriceHistoryModal';
 import ProductComparisonModal from '../components/ProductComparisonModal';
@@ -12,11 +12,12 @@ import { useAuth } from '../context/AuthContext';
 import AiRecommendationCard from '../components/AiRecommendationCard';
 import RankingExplanationBanner from '../components/RankingExplanationBanner';
 import LoadingSkeleton from '../components/LoadingSkeleton';
-import EmptyState from '../components/EmptyState';
+import ResultHeader from '../components/shopping/ResultHeader';
 import ErrorState from '../components/ErrorState';
 import PersonalizedRankingToolbar from '../components/PersonalizedRankingToolbar';
 import { saveProduct } from '../services/savedService';
 import { recordSearchHistory } from '../services/historyService';
+
 
 export const ShoppingPage = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -69,6 +70,7 @@ export const ShoppingPage = () => {
   const [aiRecommendation, setAiRecommendation] = useState(null);
   const [rankingSummary, setRankingSummary] = useState(null);
   const [failedProviders, setFailedProviders] = useState([]);
+  const [successfulProviders, setSuccessfulProviders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -202,9 +204,11 @@ export const ShoppingPage = () => {
         setAvailableCategories(data.availableCategories || []);
         setAvailableMerchants(data.availableMerchants || []);
         setDynamicFilters(data.dynamicFilters || {});
+        setSuccessfulProviders(data.successfulProviders || []);
       }
 
       setTotalOffers(data.totalOffers != null ? data.totalOffers : (data.offers ? data.offers.length : 0));
+      setQuery(data.query || query);
       setHasMore(Boolean(data.hasMore));
       setTotalPages(data.totalPages || 1);
       setCheapestPrice(data.cheapestPrice);
@@ -270,7 +274,7 @@ export const ShoppingPage = () => {
     setRankingPreset(preset);
     setRankingWeights(weights);
 
-    // Re-score offers dynamically on frontend for instant feedback
+    // Re‑score offers dynamically on frontend for instant feedback
     if (offers && offers.length > 0) {
       const wPrice = (weights.price || 40) / 100;
       const wRating = (weights.rating || 20) / 100;
@@ -293,22 +297,15 @@ export const ShoppingPage = () => {
           ? 0.85
           : 0.6;
         const normT = offer.inStock ? 0.8 : 0.4;
-
         const totalScore = Math.round((normP * wPrice + normR * wRating + normD * wDiscount + normDel * wDelivery + normT * wTrust) * 100);
-
-        return {
-          ...offer,
-          rankingScore: totalScore,
-        };
+        return { ...offer, rankingScore: totalScore };
       });
 
       if (sortBy === 'best') {
         scored.sort((a, b) => (b.rankingScore || 0) - (a.rankingScore || 0));
         if (scored.length > 0) {
           scored[0].isBestValue = true;
-          for (let i = 1; i < scored.length; i++) {
-            scored[i].isBestValue = false;
-          }
+          for (let i = 1; i < scored.length; i++) { scored[i].isBestValue = false; }
         }
       }
 
@@ -340,7 +337,6 @@ export const ShoppingPage = () => {
 
   return (
     <div className="space-y-6 sm:space-y-8 pb-16 min-w-0">
-      
       {/* Search Header Banner */}
       <div className="bg-gradient-to-r from-indigo-900 via-indigo-800 to-slate-900 rounded-3xl p-6 sm:p-10 text-white shadow-xl">
         <div className="max-w-3xl space-y-4">
@@ -359,6 +355,12 @@ export const ShoppingPage = () => {
               initialQuery={query}
               onSearch={handleSearch}
               placeholder="Search 'iPhone 15', 'Sony WH-1000XM5' or 'MacBook Air'..."
+            />
+            <ResultHeader
+              query={query}
+              totalOffers={totalOffers}
+              successfulProviders={successfulProviders}
+              failedProviders={failedProviders}
             />
           </div>
         </div>
@@ -381,7 +383,7 @@ export const ShoppingPage = () => {
         <div className="bg-amber-50 border border-amber-200/90 rounded-2xl p-4 flex items-start gap-3 shadow-xs">
           <span className="text-xl shrink-0">⚠️</span>
           <div className="text-xs sm:text-sm text-amber-900">
-            <div className="font-bold">Some stores couldn&apos;t be reached. Showing available results.</div>
+            <div className="font-bold">Some stores couldn't be reached. Showing available results.</div>
             <div className="text-amber-800/90 text-xs mt-0.5">
               Unable to reach {failedProviders.join(', ')} in time. Displaying live verified offers from active stores without interruption.
             </div>
@@ -413,7 +415,7 @@ export const ShoppingPage = () => {
         </span>
       </div>
 
-      {/* Mobile Filter Drawer / Bottom Sheet */}
+      {/* Mobile Filter Drawer */}
       {mobileFiltersOpen && (
         <div className="fixed inset-0 z-50 lg:hidden overflow-hidden" role="dialog" aria-modal="true">
           {/* Backdrop */}
@@ -421,7 +423,6 @@ export const ShoppingPage = () => {
             className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs transition-opacity"
             onClick={() => setMobileFiltersOpen(false)}
           />
-
           {/* Drawer Sheet */}
           <div className="fixed inset-y-0 right-0 max-w-full flex pl-8">
             <div className="w-screen max-w-md bg-white shadow-2xl flex flex-col justify-between">
@@ -480,7 +481,7 @@ export const ShoppingPage = () => {
                 />
               </div>
 
-              {/* Drawer Footer with Clear Filters and Apply Filters */}
+              {/* Drawer Footer */}
               <div className="p-4 border-t border-slate-100 bg-slate-50 flex items-center gap-3">
                 <button
                   type="button"
@@ -491,10 +492,7 @@ export const ShoppingPage = () => {
                 </button>
                 <button
                   type="button"
-                  onClick={() => {
-                    setMobileFiltersOpen(false);
-                    fetchOffers();
-                  }}
+                  onClick={() => { setMobileFiltersOpen(false); fetchOffers(); }}
                   className="flex-1 py-3 px-4 rounded-xl text-xs font-bold bg-indigo-600 text-white hover:bg-indigo-700 shadow-xs transition cursor-pointer min-h-[44px]"
                 >
                   Apply Filters
@@ -505,9 +503,8 @@ export const ShoppingPage = () => {
         </div>
       )}
 
-      {/* Main Grid Layout: LEFT Filters + RIGHT Product Results */}
+      {/* Main Grid Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 sm:gap-8 items-start">
-        
         {/* LEFT: Desktop Sticky Filter Sidebar */}
         <aside className="hidden lg:block bg-white p-5 sm:p-6 rounded-3xl border border-slate-200 shadow-xs lg:sticky lg:top-24">
           <ProductFilterPanel
@@ -544,79 +541,44 @@ export const ShoppingPage = () => {
 
         {/* RIGHT: Product Results Feed */}
         <main className="lg:col-span-3 space-y-6 min-w-0">
-          
-          {/* Top Results Header with Query, Count & Backend Ranking Tabs */}
-          <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
-            
-            {/* Query & Result Count Display */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-              <div>
-                <div className="text-xs sm:text-sm text-slate-600">
-                  Showing <strong className="text-slate-900 font-bold">{offers.length}</strong> offers
-                  {query && <span> for &ldquo;<strong className="text-indigo-600">{query}</strong>&rdquo;</span>}
-                  {selectedMerchant !== 'all' && <span> on <strong className="text-indigo-600">{selectedMerchant}</strong></span>}
-                </div>
-                <div className="text-[11px] text-slate-400 mt-0.5">
-                  {totalOffers > 0 && `Total matched: ${totalOffers} across active providers`}
-                </div>
-              </div>
+          {/* Result Header */}
+          <ResultHeader
+            query={query}
+            totalOffers={totalOffers}
+            successfulProviders={successfulProviders}
+            failedProviders={failedProviders}
+          />
 
-              {/* Fallback Dropdown for Extra Sort Options */}
-              <div className="flex items-center gap-1.5 self-start sm:self-auto">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Sort:</span>
-                <select
-                  value={sortBy}
-                  onChange={(e) => setSortBy(e.target.value)}
-                  aria-label="Sort products by"
-                  className="bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-800 rounded-xl px-2.5 py-1.5 focus:outline-hidden focus:border-indigo-500 cursor-pointer min-h-[36px]"
-                >
-                  <option value="best">🏆 Best Value</option>
-                  <option value="price_asc">🏷️ Cheapest</option>
-                  <option value="rating">⭐ Highest Rated</option>
-                  <option value="fastest_delivery">⚡ Fastest Delivery</option>
-                  <option value="price_desc">Price: High to Low</option>
-                  <option value="discount">Discount Percentage</option>
-                  <option value="effective_price_asc">Effective Net Price</option>
-                </select>
-              </div>
+          {/* Ranking Tabs */}
+          <div className="pt-3 border-t border-slate-100">
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar" role="tablist" aria-label="Ranking tabs">
+              {rankingTabs.map((tab) => {
+                const isActive = sortBy === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    role="tab"
+                    aria-selected={isActive}
+                    onClick={() => setSortBy(tab.id)}
+                    className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 transition cursor-pointer whitespace-nowrap border shrink-0 ${
+                      isActive
+                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm ring-2 ring-indigo-500/20'
+                        : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100 hover:text-slate-900'
+                    }`}
+                  >
+                    <span>{tab.icon}</span>
+                    <span>{tab.label}</span>
+                  </button>
+                );
+              })}
             </div>
-
-            {/* 4 Ranking Tabs: Cheapest, Best Value, Highest Rated, Fastest Delivery */}
-            <div className="pt-3 border-t border-slate-100">
-              <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar" role="tablist" aria-label="Ranking tabs">
-                {rankingTabs.map((tab) => {
-                  const isActive = sortBy === tab.id;
-                  return (
-                    <button
-                      key={tab.id}
-                      role="tab"
-                      aria-selected={isActive}
-                      onClick={() => setSortBy(tab.id)}
-                      className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 transition cursor-pointer whitespace-nowrap border shrink-0 ${
-                        isActive
-                          ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm ring-2 ring-indigo-500/20'
-                          : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100 hover:text-slate-900'
-                      }`}
-                    >
-                      <span>{tab.icon}</span>
-                      <span>{tab.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
           </div>
 
-          {/* Product Feed / Error / Skeleton / Empty State */}
+          {/* Product Feed */}
           {loading ? (
             <LoadingSkeleton type="product-card" count={6} />
           ) : error ? (
-            <ErrorState
-              title="Shopping Engine Error"
-              message={error}
-              onRetry={fetchOffers}
-            />
+            <ErrorState title="Shopping Engine Error" message={error} onRetry={fetchOffers} />
           ) : offers.length === 0 ? (
             <EmptyState
               title="No Products Found"
@@ -630,21 +592,16 @@ export const ShoppingPage = () => {
                 const cardKey = `${offer.merchant}-${offer.productName}-${idx}`;
                 const isCompared = comparedOfferKeys.includes(`${offer.merchant}-${offer.productName}`);
                 return (
-                  <ProductOfferCard
+                  <ProductCard
                     key={cardKey}
                     offer={offer}
-                    onSave={handleSaveOffer}
-                    onViewPriceHistory={handleOpenPriceHistory}
-                    onCompare={handleCompareToggle}
-                    onSetPriceAlert={handleOpenPriceAlert}
-                    isCompared={isCompared}
                   />
                 );
               })}
             </div>
           )}
 
-          {/* Pagination: Load More Offers */}
+          {/* Pagination Load More */}
           {!loading && offers.length > 0 && hasMore && (
             <div className="pt-4 pb-6 text-center">
               <button
@@ -662,48 +619,21 @@ export const ShoppingPage = () => {
                   <>
                     <span>Load More Offers</span>
                     <span className="text-indigo-200 text-xs font-mono font-normal">
-                      (Page {page} of {totalPages} &bull; {offers.length} of {totalOffers})
+                      (Page {page} of {totalPages} • {offers.length} of {totalOffers})
                     </span>
                   </>
                 )}
               </button>
             </div>
           )}
-
         </main>
-
       </div>
 
-      {/* Price History Modal */}
-      <PriceHistoryModal
-        isOpen={historyModalOpen}
-        onClose={() => setHistoryModalOpen(false)}
-        product={selectedProductForHistory}
-      />
-
-      {/* Side-by-Side Product Comparison Modal */}
-      <ProductComparisonModal
-        isOpen={comparisonModalOpen}
-        onClose={() => setComparisonModalOpen(false)}
-        selectedOffer={selectedOfferForComparison}
-        allOffers={offers}
-        onSetPriceAlert={handleOpenPriceAlert}
-      />
-
-      {/* Price Alert Modal */}
-      <PriceAlertModal
-        isOpen={priceAlertModalOpen}
-        onClose={() => setPriceAlertModalOpen(false)}
-        product={selectedOfferForAlert}
-        onOpenAuthModal={() => setAuthModalOpen(true)}
-      />
-
-      {/* Auth Modal for Unauthenticated Users */}
-      <AuthModal
-        isOpen={authModalOpen}
-        onClose={() => setAuthModalOpen(false)}
-      />
-
+      {/* Modals */}
+      <PriceHistoryModal isOpen={historyModalOpen} onClose={() => setHistoryModalOpen(false)} product={selectedProductForHistory} />
+      <ProductComparisonModal isOpen={comparisonModalOpen} onClose={() => setComparisonModalOpen(false)} selectedOffer={selectedOfferForComparison} allOffers={offers} onSetPriceAlert={handleOpenPriceAlert} />
+      <PriceAlertModal isOpen={priceAlertModalOpen} onClose={() => setPriceAlertModalOpen(false)} product={selectedOfferForAlert} onOpenAuthModal={() => setAuthModalOpen(true)} />
+      <AuthModal isOpen={authModalOpen} onClose={() => setAuthModalOpen(false)} />
     </div>
   );
 };
