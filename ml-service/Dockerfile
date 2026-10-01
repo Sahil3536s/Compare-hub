@@ -12,10 +12,7 @@ COPY app/ ./app/
 COPY training/ ./training/
 
 # Create directories for models and data
-RUN mkdir -p models data reports
-
-# Mount point for pre-trained model (injected via volume or copy at deploy time)
-VOLUME ["/app/models"]
+RUN mkdir -p models data reports /app/pranav-ml/models
 
 EXPOSE 8000
 

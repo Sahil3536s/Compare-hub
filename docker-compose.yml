@@ -47,14 +47,12 @@ services:
       ML_SERVICE_PORT: 8000
       MIN_HISTORY_POINTS: 20
       BUY_WAIT_THRESHOLD_PCT: 2.5
-      MODEL_PATH: models/price_predictor.joblib
-      METADATA_PATH: models/model_metadata.json
+      MODEL_PATH: /app/pranav-ml/models/price_prediction_model.joblib
     ports:
       - "8000:8000"
     volumes:
-      # Mount pre-trained models directory (read-only at runtime)
-      # Train offline with: python -m training.train --dataset data/training_dataset.csv
-      - ./ml-service/models:/app/models
+    # Mount Pranav's trained Review 2 model (read-only)
+    - ./pranav-ml/models:/app/pranav-ml/models:ro
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 15s
