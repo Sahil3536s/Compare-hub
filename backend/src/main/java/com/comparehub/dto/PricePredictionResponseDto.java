@@ -1,83 +1,57 @@
 package com.comparehub.dto;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.math.BigDecimal;
-
 /**
  * DTO returned by Spring Boot to the React frontend for ML price prediction.
- * All field names are camelCase (standard JSON for this project).
+ * Fields align with the NEW FastAPI next‑day prediction contract.
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class PricePredictionResponseDto {
 
-    /**
-     * Status of the prediction:
-     * SUCCESS, INSUFFICIENT_DATA, ML_UNAVAILABLE, MODEL_NOT_LOADED, ERROR
-     */
+    /** Status of the prediction: SUCCESS, INSUFFICIENT_DATA, ML_UNAVAILABLE, MODEL_NOT_LOADED, ERROR */
     private String status;
 
     private Long productId;
     private String productName;
 
-    /**
-     * Current price at time of prediction request.
-     */
-    private BigDecimal currentPrice;
+    /** Current price at time of request */
+    private java.math.BigDecimal currentPrice;
 
-    /**
-     * Estimated price approximately 7 days from now.
-     * Only populated when status = SUCCESS.
-     * IMPORTANT: This is an estimate, not a guaranteed future price.
-     */
-    private BigDecimal predictedPrice7d;
-    private BigDecimal predictedPrice7Days;
+    /** Predicted price for the next day */
+    private java.math.BigDecimal predictedPrice;
 
-    /** Estimated absolute change from current to predicted price. */
-    private BigDecimal predictedChange;
+    /** Absolute change from current price to predicted next‑day price */
+    private java.math.BigDecimal predictedChange;
 
-    /** Estimated percentage change. */
+    /** Percentage change (e.g., 1.06) */
     private Double predictedChangePercent;
 
     /** BUY_NOW, WAIT, or HOLD */
     private String recommendation;
 
-    /** Human-readable reason for the recommendation. */
+    /** Human‑readable reason for the recommendation */
     private String recommendationReason;
 
-    /** High, Medium, or Low — based on prediction spread. */
-    private String confidenceLabel;
-
-    /** Lower bound of the estimated price interval. */
-    private BigDecimal predictedPriceLow;
-    private BigDecimal predictionRangeLow;
-
-    /** Upper bound of the estimated price interval. */
-    private BigDecimal predictedPriceHigh;
-    private BigDecimal predictionRangeHigh;
-
-    /**
-     * Statistical deal quality: GOOD_DEAL, NORMAL_PRICE, or EXPENSIVE.
-     * Computed from rule-based statistical logic, not ML classification.
-     */
+    /** Deterministic deal quality (statistical, not ML) */
     private String dealQuality;
 
-    /** Name of the model used for prediction (e.g., RandomForestRegressor). */
+    /** Model metadata */
     private String modelName;
-    private String model;
-
-    /** Model version identifier. */
     private String modelVersion;
 
-    /** Number of real price history observations used. */
+    /** Number of real price‑history observations used */
     private Integer dataPointsUsed;
 
-    /** Informational message, especially for non-SUCCESS statuses. */
+    /** Optional informational message (e.g., insufficient data) */
     private String message;
 }

@@ -8,9 +8,8 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
- * Internal DTO for deserializing the raw JSON response from the FastAPI ML service.
- * Field names match the snake_case JSON produced by the Python service.
- * This is NOT exposed to the frontend — use PricePredictionResponseDto for that.
+ * DTO for deserializing the response from the FastAPI ML service.
+ * Matches the NEW contract (next‑day prediction).
  */
 @Data
 @Builder
@@ -28,8 +27,8 @@ public class MLServiceResponseDto {
     @JsonProperty("current_price")
     private Double currentPrice;
 
-    @JsonProperty("predicted_price_7d")
-    private Double predictedPrice7d;
+    @JsonProperty("predicted_price")
+    private Double predictedPrice;
 
     @JsonProperty("predicted_change")
     private Double predictedChange;
@@ -43,18 +42,6 @@ public class MLServiceResponseDto {
     @JsonProperty("recommendation_reason")
     private String recommendationReason;
 
-    @JsonProperty("confidence_label")
-    private String confidenceLabel;
-
-    @JsonProperty("predicted_price_low")
-    private Double predictedPriceLow;
-
-    @JsonProperty("predicted_price_high")
-    private Double predictedPriceHigh;
-
-    @JsonProperty("deal_quality")
-    private String dealQuality;
-
     @JsonProperty("model_name")
     private String modelName;
 
@@ -66,4 +53,5 @@ public class MLServiceResponseDto {
 
     @JsonProperty("message")
     private String message;
+
 }

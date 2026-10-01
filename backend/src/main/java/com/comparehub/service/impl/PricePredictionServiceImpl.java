@@ -48,29 +48,41 @@ public class PricePredictionServiceImpl implements com.comparehub.service.PriceP
         List<ProductPriceHistory> history = priceHistoryRepository
                 .findByProductIdOrderByRecordedAtAsc(productId);
 
+        // 2a. Exclude mock/demo merchants from history
+        List<ProductPriceHistory> genuineHistory = history.stream()
+                .filter(h -> {
+                    String merchant = h.getMerchant().toLowerCase();
+                    return !(merchant.contains("amazon mock")
+                            || merchant.contains("flipkart mock")
+                            || merchant.contains("croma mock")
+                            || merchant.contains("dummyjson")
+                            || merchant.contains("openproductdata"));
+                })
+                .toList();
+
         // 3. Check minimum data requirement BEFORE calling ML service
-        if (history.size() < minHistoryPoints) {
-            log.info("Insufficient price history for product {} ({} points, need {})",
-                    productId, history.size(), minHistoryPoints);
+        if (genuineHistory.size() < minHistoryPoints) {
+            log.info("Insufficient genuine price history for product {} ({} points, need {})",
+                    productId, genuineHistory.size(), minHistoryPoints);
             return PricePredictionResponseDto.builder()
                     .status("INSUFFICIENT_DATA")
                     .productId(productId)
                     .productName(product.getName())
-                    .dataPointsUsed(history.size())
+                    .dataPointsUsed(genuineHistory.size())
                     .message(String.format(
                             "More price history is required before a reliable prediction can be generated. "
-                            + "Currently have %d observations; minimum required is %d.",
-                            history.size(), minHistoryPoints))
+                            + "Currently have %d genuine observations; minimum required is %d.",
+                            genuineHistory.size(), minHistoryPoints))
                     .build();
         }
 
         // 4. Map history to price points for ML service
-        List<Map<String, Object>> pricePoints = history.stream()
-                .map(h -> Map.<String, Object>of(
-                        "date", DATE_FORMATTER.format(h.getRecordedAt()),
-                        "price", h.getPrice().doubleValue(),
-                        "merchant", h.getMerchant()
-                ))
+        List<com.comparehub.dto.MLPricePointDto> pricePoints = genuineHistory.stream()
+                .map(h -> com.comparehub.dto.MLPricePointDto.builder()
+                        .date(DATE_FORMATTER.format(h.getRecordedAt()))
+                        .price(h.getPrice().doubleValue())
+                        .merchant(h.getMerchant())
+                        .build())
                 .toList();
 
         // 5. Call ML service (with Resilience4j circuit breaker via MLServiceClient)
@@ -127,30 +139,15 @@ public class PricePredictionServiceImpl implements com.comparehub.service.PriceP
     }
 
     private boolean isValidMLResponse(MLServiceResponseDto ml) {
-        if (ml.getCurrentPrice() == null || ml.getPredictedPrice7d() == null) {
-            return false;
-        }
-        if (ml.getCurrentPrice() <= 0 || ml.getPredictedPrice7d() <= 0) {
-            return false;
-        }
-        if (Double.isNaN(ml.getCurrentPrice()) || Double.isInfinite(ml.getCurrentPrice()) ||
-            Double.isNaN(ml.getPredictedPrice7d()) || Double.isInfinite(ml.getPredictedPrice7d())) {
-            return false;
-        }
-        if (ml.getPredictedChange() != null &&
-            (Double.isNaN(ml.getPredictedChange()) || Double.isInfinite(ml.getPredictedChange()))) {
-            return false;
-        }
-        if (ml.getPredictedChangePercent() != null &&
-            (Double.isNaN(ml.getPredictedChangePercent()) || Double.isInfinite(ml.getPredictedChangePercent()))) {
-            return false;
-        }
-        if (ml.getPredictedPriceLow() != null && ml.getPredictedPriceHigh() != null) {
-            if (ml.getPredictedPriceLow() <= 0 || ml.getPredictedPriceHigh() < ml.getPredictedPriceLow() ||
-                Double.isNaN(ml.getPredictedPriceLow()) || Double.isNaN(ml.getPredictedPriceHigh()) ||
-                Double.isInfinite(ml.getPredictedPriceLow()) || Double.isInfinite(ml.getPredictedPriceHigh())) {
-                return false;
-            }
+        // New contract validation – ensure required numeric fields are present and sensible
+        if (ml.getStatus() == null) return false;
+        if ("SUCCESS".equalsIgnoreCase(ml.getStatus())) {
+            if (ml.getCurrentPrice() == null || ml.getPredictedPrice() == null) return false;
+            if (ml.getCurrentPrice() <= 0 || ml.getPredictedPrice() <= 0) return false;
+            if (Double.isNaN(ml.getCurrentPrice()) || Double.isInfinite(ml.getCurrentPrice())) return false;
+            if (Double.isNaN(ml.getPredictedPrice()) || Double.isInfinite(ml.getPredictedPrice())) return false;
+            if (ml.getPredictedChange() != null && (Double.isNaN(ml.getPredictedChange()) || Double.isInfinite(ml.getPredictedChange()))) return false;
+            if (ml.getPredictedChangePercent() != null && (Double.isNaN(ml.getPredictedChangePercent()) || Double.isInfinite(ml.getPredictedChangePercent()))) return false;
         }
         return true;
     }
@@ -165,38 +162,22 @@ public class PricePredictionServiceImpl implements com.comparehub.service.PriceP
                 .dataPointsUsed(ml.getDataPointsUsed())
                 .message(ml.getMessage())
                 .modelName(ml.getModelName())
-                .model(ml.getModelName())
                 .modelVersion(ml.getModelVersion())
                 .recommendation(ml.getRecommendation())
-                .recommendationReason(ml.getRecommendationReason())
-                .confidenceLabel(ml.getConfidenceLabel())
-                .dealQuality(ml.getDealQuality());
+                .recommendationReason(ml.getRecommendationReason());
 
         if (ml.getCurrentPrice() != null) {
-            builder.currentPrice(BigDecimal.valueOf(ml.getCurrentPrice()));
+            builder.currentPrice(java.math.BigDecimal.valueOf(ml.getCurrentPrice()));
         }
-        if (ml.getPredictedPrice7d() != null) {
-            BigDecimal p7d = BigDecimal.valueOf(ml.getPredictedPrice7d());
-            builder.predictedPrice7d(p7d);
-            builder.predictedPrice7Days(p7d);
+        if (ml.getPredictedPrice() != null) {
+            builder.predictedPrice(java.math.BigDecimal.valueOf(ml.getPredictedPrice()));
         }
         if (ml.getPredictedChange() != null) {
-            builder.predictedChange(BigDecimal.valueOf(ml.getPredictedChange()));
+            builder.predictedChange(java.math.BigDecimal.valueOf(ml.getPredictedChange()));
         }
         if (ml.getPredictedChangePercent() != null) {
             builder.predictedChangePercent(ml.getPredictedChangePercent());
         }
-        if (ml.getPredictedPriceLow() != null) {
-            BigDecimal low = BigDecimal.valueOf(ml.getPredictedPriceLow());
-            builder.predictedPriceLow(low);
-            builder.predictionRangeLow(low);
-        }
-        if (ml.getPredictedPriceHigh() != null) {
-            BigDecimal high = BigDecimal.valueOf(ml.getPredictedPriceHigh());
-            builder.predictedPriceHigh(high);
-            builder.predictionRangeHigh(high);
-        }
-
         return builder.build();
     }
 }

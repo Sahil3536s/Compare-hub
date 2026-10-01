@@ -101,15 +101,11 @@ class PricePredictionServiceTest {
                 .status("SUCCESS")
                 .productId(1L)
                 .currentPrice(58999.0)
-                .predictedPrice7d(56500.0)
+                .predictedPrice(56500.0)
                 .predictedChange(-2499.0)
                 .predictedChangePercent(-4.24)
                 .recommendation("WAIT")
-                .recommendationReason("Price may decrease in 7 days.")
-                .confidenceLabel("Medium")
-                .predictedPriceLow(54900.0)
-                .predictedPriceHigh(58300.0)
-                .dealQuality("GOOD_DEAL")
+                .recommendationReason("Price may decrease tomorrow.")
                 .modelName("RandomForestRegressor")
                 .modelVersion("1.0")
                 .dataPointsUsed(25)
@@ -123,8 +119,7 @@ class PricePredictionServiceTest {
         assertEquals("iPhone 15 Pro", result.getProductName());
         assertEquals("WAIT", result.getRecommendation());
         assertEquals(new BigDecimal("58999.0"), result.getCurrentPrice());
-        assertEquals(new BigDecimal("56500.0"), result.getPredictedPrice7d());
-        assertEquals("GOOD_DEAL", result.getDealQuality());
+        assertEquals(new BigDecimal("56500.0"), result.getPredictedPrice());
         assertEquals("RandomForestRegressor", result.getModelName());
     }
 
@@ -141,7 +136,7 @@ class PricePredictionServiceTest {
 
         assertEquals("TEMPORARILY_UNAVAILABLE", result.getStatus());
         assertNotNull(result.getMessage());
-        assertNull(result.getPredictedPrice7d());
+        assertNull(result.getPredictedPrice());
     }
 
     @Test
@@ -154,7 +149,7 @@ class PricePredictionServiceTest {
                 .status("SUCCESS")
                 .productId(1L)
                 .currentPrice(-500.0) // Impossible negative price!
-                .predictedPrice7d(56000.0)
+                .predictedPrice(56000.0)
                 .build();
 
         when(mlServiceClient.predict(eq(1L), anyList())).thenReturn(Optional.of(malformed));
@@ -162,7 +157,7 @@ class PricePredictionServiceTest {
         PricePredictionResponseDto result = service.getPricePrediction(1L);
 
         assertEquals("INVALID_RESPONSE", result.getStatus());
-        assertNull(result.getPredictedPrice7d());
+        assertNull(result.getPredictedPrice());
     }
 
     @Test
@@ -175,7 +170,7 @@ class PricePredictionServiceTest {
                 .status("SUCCESS")
                 .productId(1L)
                 .currentPrice(Double.NaN) // Impossible NaN!
-                .predictedPrice7d(56000.0)
+                .predictedPrice(56000.0)
                 .build();
 
         when(mlServiceClient.predict(eq(1L), anyList())).thenReturn(Optional.of(malformed));
@@ -183,11 +178,11 @@ class PricePredictionServiceTest {
         PricePredictionResponseDto result = service.getPricePrediction(1L);
 
         assertEquals("INVALID_RESPONSE", result.getStatus());
-        assertNull(result.getPredictedPrice7d());
+        assertNull(result.getPredictedPrice());
     }
 
     @Test
-    void shouldRejectInvertedRangeInMLResponse() {
+    void shouldRejectNegativePredictedPriceInMLResponse() {
         when(productRepository.findById(1L)).thenReturn(Optional.of(testProduct));
         when(priceHistoryRepository.findByProductIdOrderByRecordedAtAsc(1L))
                 .thenReturn(buildHistory(25));
@@ -196,9 +191,7 @@ class PricePredictionServiceTest {
                 .status("SUCCESS")
                 .productId(1L)
                 .currentPrice(55000.0)
-                .predictedPrice7d(56000.0)
-                .predictedPriceLow(60000.0) // Low > High!
-                .predictedPriceHigh(50000.0)
+                .predictedPrice(-100.0) // Impossible negative predicted price!
                 .build();
 
         when(mlServiceClient.predict(eq(1L), anyList())).thenReturn(Optional.of(malformed));
@@ -206,7 +199,47 @@ class PricePredictionServiceTest {
         PricePredictionResponseDto result = service.getPricePrediction(1L);
 
         assertEquals("INVALID_RESPONSE", result.getStatus());
-        assertNull(result.getPredictedPrice7d());
+        assertNull(result.getPredictedPrice());
+    }
+
+    @Test
+    void shouldFilterOutMockMerchantsFromHistory() {
+        when(productRepository.findById(1L)).thenReturn(Optional.of(testProduct));
+
+        List<ProductPriceHistory> mixedHistory = new ArrayList<>();
+        Instant base = Instant.now().minus(30, ChronoUnit.DAYS);
+
+        // 15 genuine points
+        for (int i = 0; i < 15; i++) {
+            mixedHistory.add(ProductPriceHistory.builder()
+                    .id((long) i)
+                    .product(testProduct)
+                    .merchant("Amazon")
+                    .price(new BigDecimal("50000.00"))
+                    .currency("INR")
+                    .recordedAt(base.plus(i, ChronoUnit.DAYS))
+                    .build());
+        }
+        // 10 mock points
+        for (int i = 15; i < 25; i++) {
+            mixedHistory.add(ProductPriceHistory.builder()
+                    .id((long) i)
+                    .product(testProduct)
+                    .merchant("Amazon Mock")
+                    .price(new BigDecimal("50000.00"))
+                    .currency("INR")
+                    .recordedAt(base.plus(i, ChronoUnit.DAYS))
+                    .build());
+        }
+
+        when(priceHistoryRepository.findByProductIdOrderByRecordedAtAsc(1L)).thenReturn(mixedHistory);
+
+        // Since only 15 genuine points exist (< 20), it should return INSUFFICIENT_DATA and NOT call ML service
+        PricePredictionResponseDto result = service.getPricePrediction(1L);
+
+        assertEquals("INSUFFICIENT_DATA", result.getStatus());
+        assertEquals(15, result.getDataPointsUsed());
+        verifyNoInteractions(mlServiceClient);
     }
 
     // ── Recommendation values ──
@@ -221,11 +254,10 @@ class PricePredictionServiceTest {
                 .status("SUCCESS")
                 .productId(1L)
                 .currentPrice(55000.0)
-                .predictedPrice7d(58000.0)
+                .predictedPrice(58000.0)
                 .predictedChange(3000.0)
                 .predictedChangePercent(5.45)
                 .recommendation("BUY_NOW")
-                .dealQuality("NORMAL_PRICE")
                 .modelName("RandomForestRegressor")
                 .build();
 
@@ -245,11 +277,10 @@ class PricePredictionServiceTest {
                 .status("SUCCESS")
                 .productId(1L)
                 .currentPrice(58000.0)
-                .predictedPrice7d(58100.0)
+                .predictedPrice(58100.0)
                 .predictedChange(100.0)
                 .predictedChangePercent(0.17)
                 .recommendation("HOLD")
-                .dealQuality("NORMAL_PRICE")
                 .modelName("LinearRegression")
                 .build();
 

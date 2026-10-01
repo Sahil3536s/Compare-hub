@@ -23,9 +23,8 @@ def make_price_points(n: int = 25, base_price: float = 58000.0):
 
 @pytest.fixture(scope="module")
 def client():
-    with patch("app.predictor.os.path.exists", return_value=False):
-        from app.main import app
-        return TestClient(app)
+    from app.main import app
+    return TestClient(app)
 
 
 class TestHealthEndpoint:
@@ -47,7 +46,7 @@ class TestPredictPriceEndpoint:
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "INSUFFICIENT_DATA"
-        assert data["predicted_price_7d"] is None
+        assert data["predicted_price"] is None
 
     def test_model_not_loaded_when_no_model_file(self, client):
         payload = {
@@ -83,5 +82,5 @@ class TestPredictPriceEndpoint:
         data = response.json()
         assert "status" in data
         assert "message" in data
-        assert data["predicted_price_7d"] is None
+        assert data["predicted_price"] is None
         assert data["recommendation"] is None

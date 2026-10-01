@@ -50,20 +50,6 @@ const DealQualityBadge = ({ dealQuality }) => {
   );
 };
 
-const ConfidenceDot = ({ label }) => {
-  const config = {
-    High: 'bg-emerald-500',
-    Medium: 'bg-amber-500',
-    Low: 'bg-rose-500',
-  };
-  return (
-    <span className="flex items-center gap-1.5 text-xs text-slate-400">
-      <span className={`inline-block w-2 h-2 rounded-full ${config[label] || 'bg-slate-400'}`} />
-      {label} Confidence
-    </span>
-  );
-};
-
 const MLPredictionSection = ({ productId, prediction: parentPred, loading: parentLoading, fetchError: parentError }) => {
   const [internalPrediction, setInternalPrediction] = useState(null);
   const [internalLoading, setInternalLoading] = useState(true);
@@ -196,9 +182,7 @@ const MLPredictionSection = ({ productId, prediction: parentPred, loading: paren
     : 'text-slate-500';
   const changeArrow = changeIsPositive ? '↑' : changeIsNegative ? '↓' : '→';
 
-  const predPrice = prediction.predictedPrice7d != null ? prediction.predictedPrice7d : prediction.predictedPrice7Days;
-  const rangeLow = prediction.predictedPriceLow != null ? prediction.predictedPriceLow : prediction.predictionRangeLow;
-  const rangeHigh = prediction.predictedPriceHigh != null ? prediction.predictedPriceHigh : prediction.predictionRangeHigh;
+  const predPrice = prediction.predictedPrice != null ? prediction.predictedPrice : (prediction.predictedPrice7d != null ? prediction.predictedPrice7d : prediction.predictedPrice7Days);
   const modelName = prediction.modelName || prediction.model || 'RandomForestRegressor';
 
   return (
@@ -210,12 +194,9 @@ const MLPredictionSection = ({ productId, prediction: parentPred, loading: paren
             💡 SMART PRICE INSIGHT
           </span>
           <span className="text-[10px] font-bold text-violet-600 uppercase tracking-wider bg-violet-50 px-2.5 py-1 rounded-md border border-violet-200/60">
-            🤖 ML Price Prediction
+            🤖 Next-Day ML Forecast
           </span>
         </div>
-        {prediction.confidenceLabel && (
-          <ConfidenceDot label={prediction.confidenceLabel} />
-        )}
       </div>
 
       {/* Main Prediction Cards */}
@@ -230,16 +211,16 @@ const MLPredictionSection = ({ productId, prediction: parentPred, loading: paren
           </span>
         </div>
 
-        {/* Estimated Price in 7 Days */}
+        {/* Predicted Next-Day Price */}
         <div className="bg-violet-50 p-3 rounded-2xl border border-violet-100 text-center sm:text-left">
           <span className="text-[10px] font-bold uppercase tracking-wider text-violet-700 block">
-            Estimated Price in 7 Days
+            Predicted Next-Day Price
           </span>
           <span className="text-sm sm:text-base font-black text-violet-900 font-mono mt-0.5 block">
             ₹{fmt(predPrice)}
           </span>
           <span className="text-[10px] text-violet-600/70 font-semibold block">
-            Est. Price in 7d
+            Next-Day Forecast
           </span>
         </div>
 
@@ -292,33 +273,32 @@ const MLPredictionSection = ({ productId, prediction: parentPred, loading: paren
         </div>
       )}
 
-      {/* Estimated Range */}
-      {rangeLow != null && rangeHigh != null && (
+      {/* Model Metadata */}
+      {(prediction.modelName || prediction.modelVersion || prediction.dataPointsUsed != null) && (
         <div className="bg-slate-900 text-white p-4 rounded-2xl border border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div className="space-y-0.5">
             <span className="text-[10px] font-bold text-violet-400 uppercase tracking-wider block">
-              Estimated Range (7d)
+              ML Model
             </span>
-            <span className="text-sm font-mono font-bold text-white">
-              ₹{fmt(rangeLow)} – ₹{fmt(rangeHigh)}
+            <span className="text-xs font-mono font-bold text-white">
+              {modelName} {prediction.modelVersion ? `v${prediction.modelVersion}` : ''}
             </span>
           </div>
-          <div className="text-right shrink-0">
-            <span className="text-[10px] text-slate-400 block uppercase">Model</span>
-            <span className="text-xs font-mono font-bold text-violet-300">
-              {modelName}
-            </span>
-            {prediction.modelVersion && (
-              <span className="text-[10px] text-slate-500 block">v{prediction.modelVersion}</span>
-            )}
-          </div>
+          {prediction.dataPointsUsed != null && (
+            <div className="text-left sm:text-right shrink-0">
+              <span className="text-[10px] text-slate-400 block uppercase">Observations</span>
+              <span className="text-xs font-mono font-bold text-violet-300">
+                {prediction.dataPointsUsed} genuine price points
+              </span>
+            </div>
+          )}
         </div>
       )}
 
       {/* Disclaimers */}
       <div className="space-y-1 text-center">
         <p className="text-xs font-semibold text-slate-600">
-          Prediction is based on historical price patterns and is not guaranteed.
+          Next-day prediction is based on genuine historical price patterns and is not guaranteed.
         </p>
         <p className="text-[10px] text-slate-400 leading-relaxed">
           Based on historical price patterns. Predicted prices are estimates, not guaranteed future prices.
@@ -375,7 +355,15 @@ export const PriceHistoryModal = ({ isOpen, onClose, product }) => {
 
   useEffect(() => {
     if (!isOpen || !product) return;
-    const prodId = product.id || Math.abs((product.productName || 'prod').hashCode() % 500) || 1;
+    const prodId = product.id;
+    if (!prodId) {
+      setPredictionLoading(false);
+      setPrediction({
+        status: 'INSUFFICIENT_DATA',
+        message: 'No valid persisted product ID found for prediction.',
+      });
+      return;
+    }
     setPredictionLoading(true);
     setPredictionError(false);
     getProductPrediction(prodId)
@@ -389,12 +377,12 @@ export const PriceHistoryModal = ({ isOpen, onClose, product }) => {
 
   if (!isOpen || !product) return null;
 
-  // Derive numeric product ID for prediction
-  const productId = product.id || Math.abs((product.productName || 'prod').hashCode() % 500) || 1;
+  // Persisted numeric product ID for prediction (never synthesize/hash IDs)
+  const productId = product.id || null;
 
   // Prediction value for chart projection
-  const predVal = (prediction?.status === 'SUCCESS' && (prediction.predictedPrice7Days != null || prediction.predictedPrice7d != null || prediction.predicted_price_7d != null))
-    ? Number(prediction.predictedPrice7Days ?? prediction.predictedPrice7d ?? prediction.predicted_price_7d)
+  const predVal = (prediction?.status === 'SUCCESS' && prediction.predictedPrice != null)
+    ? Number(prediction.predictedPrice)
     : null;
   const hasValidPred = predVal !== null && !isNaN(predVal) && predVal > 0;
 
@@ -414,7 +402,7 @@ export const PriceHistoryModal = ({ isOpen, onClose, product }) => {
   const paddingX = 40;
   const paddingY = 25;
 
-  // If we have a future predicted point, give historical points space to leave room for the +7d forecast point
+  // If we have a future predicted point, give historical points space to leave room for the forecast point
   const histEndX = hasValidPred && pricePoints.length > 0 ? chartWidth - paddingX - 60 : chartWidth - paddingX;
 
   const points = pricePoints.map((p, index) => {
@@ -428,8 +416,8 @@ export const PriceHistoryModal = ({ isOpen, onClose, product }) => {
     x: chartWidth - paddingX,
     y: chartHeight - paddingY - ((predVal - minPrice) / priceRange) * (chartHeight - paddingY * 2),
     price: predVal,
-    date: '+7d Forecast',
-    merchant: `ML Forecast (${prediction.model || prediction.modelVersion || 'Random Forest'})`,
+    date: 'Next-Day Forecast',
+    merchant: `ML Forecast (${prediction.modelName || prediction.modelVersion || 'Random Forest'})`,
     isPredicted: true,
   } : null;
 
@@ -612,7 +600,7 @@ export const PriceHistoryModal = ({ isOpen, onClose, product }) => {
 
             {/* Price Chart SVG Canvas */}
             <div className="bg-slate-950 rounded-2xl p-3 sm:p-4 relative overflow-hidden border border-slate-800">
-              {/* Legend: ACTUAL (Historical) vs PREDICTED (7-Day ML Forecast) */}
+              {/* Legend: ACTUAL (Historical) vs PREDICTED (Next-Day ML Forecast) */}
               <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] mb-2 px-1">
                 <div className="flex items-center gap-4">
                   <span className="flex items-center gap-1.5 text-slate-300 font-medium">
@@ -622,13 +610,13 @@ export const PriceHistoryModal = ({ isOpen, onClose, product }) => {
                   {hasValidPred && (
                     <span className="flex items-center gap-1.5 text-purple-300 font-medium">
                       <span className="inline-block w-2.5 h-2.5 rotate-45 bg-purple-500 border border-purple-300" />
-                      PREDICTED (7-Day ML Forecast)
+                      PREDICTED (Next-Day ML Forecast)
                     </span>
                   )}
                 </div>
                 {hasValidPred && (
                   <span className="text-[10px] text-purple-300 font-mono font-semibold">
-                    7d Est: ₹{Number(predVal).toLocaleString('en-IN')}
+                    Next-Day Est: ₹{Number(predVal).toLocaleString('en-IN')}
                   </span>
                 )}
               </div>
@@ -739,7 +727,7 @@ export const PriceHistoryModal = ({ isOpen, onClose, product }) => {
                       fontWeight="bold"
                       fill="#c084fc"
                     >
-                      +7d
+                      Next Day
                     </text>
                   </g>
                 )}
@@ -750,7 +738,7 @@ export const PriceHistoryModal = ({ isOpen, onClose, product }) => {
                 <span>{points[0]?.date || 'Start'}</span>
                 <span className="text-slate-500">Average: ₹{Number(data.averagePrice || 0).toLocaleString('en-IN')}</span>
                 <span>{points[points.length - 1]?.date || 'Today'}</span>
-                {predPoint && <span className="text-purple-400">+7d Forecast</span>}
+                {predPoint && <span className="text-purple-400">Next-Day Forecast</span>}
               </div>
             </div>
 

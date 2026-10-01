@@ -1077,7 +1077,7 @@ export const ProductDetailsPage = () => {
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold text-indigo-300 uppercase tracking-wider">
-                    Predictive Horizon: 7–14 Days
+                    Predictive Horizon: Next Day
                   </span>
                   <span className="text-xs font-bold bg-indigo-500/30 text-indigo-200 border border-indigo-400/30 px-2.5 py-0.5 rounded-full">
                     Confidence: {Math.round(Number(mlPrediction.confidenceScore) * 100)}%

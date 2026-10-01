@@ -89,7 +89,7 @@ describe('ML Price Prediction — Frontend', () => {
     });
     expect(screen.getByText(/More price observations/i)).toBeInTheDocument();
     // Must NOT show any predicted price
-    expect(screen.queryByText(/Est\. Price in 7d/i)).not.toBeInTheDocument();
+    expect(screen.queryByText('Predicted Next-Day Price')).not.toBeInTheDocument();
   });
 
   // ── ML_UNAVAILABLE ──
@@ -124,14 +124,11 @@ describe('ML Price Prediction — Frontend', () => {
       status: 'SUCCESS',
       productId: 1,
       currentPrice: 58999,
-      predictedPrice7d: 56500,
+      predictedPrice: 56500,
       predictedChange: -2499,
       predictedChangePercent: -4.24,
       recommendation: 'WAIT',
-      recommendationReason: 'Model estimates the price may decrease by 4.2% over the next 7 days.',
-      confidenceLabel: 'Medium',
-      predictedPriceLow: 54900,
-      predictedPriceHigh: 58300,
+      recommendationReason: 'Model estimates the price may decrease by 4.2% tomorrow.',
       dealQuality: 'GOOD_DEAL',
       modelName: 'RandomForestRegressor',
       modelVersion: '1.0',
@@ -143,10 +140,9 @@ describe('ML Price Prediction — Frontend', () => {
     await waitFor(() => {
       expect(screen.getByText(/⏳ WAIT/i)).toBeInTheDocument();
     });
-    expect(screen.getByText(/Est\. Price in 7d/i)).toBeInTheDocument();
+    expect(screen.getByText('Predicted Next-Day Price')).toBeInTheDocument();
     expect(screen.getByText(/🏷️ Good Deal/i)).toBeInTheDocument();
     expect(screen.getByText(/RandomForestRegressor/i)).toBeInTheDocument();
-    expect(screen.getByText(/Medium Confidence/i)).toBeInTheDocument();
     expect(screen.getByText(/price may decrease/i)).toBeInTheDocument();
   });
 
@@ -156,14 +152,11 @@ describe('ML Price Prediction — Frontend', () => {
       status: 'SUCCESS',
       productId: 1,
       currentPrice: 55000,
-      predictedPrice7d: 58000,
+      predictedPrice: 58000,
       predictedChange: 3000,
       predictedChangePercent: 5.45,
       recommendation: 'BUY_NOW',
-      recommendationReason: 'Model estimates the price may increase by 5.5% over the next 7 days.',
-      confidenceLabel: 'High',
-      predictedPriceLow: 57000,
-      predictedPriceHigh: 59500,
+      recommendationReason: 'Model estimates the price may increase by 5.5% tomorrow.',
       dealQuality: 'NORMAL_PRICE',
       modelName: 'RandomForestRegressor',
       modelVersion: '1.0',
@@ -176,7 +169,6 @@ describe('ML Price Prediction — Frontend', () => {
       expect(screen.getByText(/✅ BUY NOW/i)).toBeInTheDocument();
     });
     expect(screen.getByText(/📊 Normal Price/i)).toBeInTheDocument();
-    expect(screen.getByText(/High Confidence/i)).toBeInTheDocument();
     expect(screen.getByText(/price may increase/i)).toBeInTheDocument();
   });
 
@@ -186,14 +178,11 @@ describe('ML Price Prediction — Frontend', () => {
       status: 'SUCCESS',
       productId: 1,
       currentPrice: 58000,
-      predictedPrice7d: 58100,
+      predictedPrice: 58100,
       predictedChange: 100,
       predictedChangePercent: 0.17,
       recommendation: 'HOLD',
       recommendationReason: 'The estimated price is expected to remain relatively stable.',
-      confidenceLabel: 'High',
-      predictedPriceLow: 57500,
-      predictedPriceHigh: 58700,
       dealQuality: 'EXPENSIVE',
       modelName: 'LinearRegression',
       modelVersion: '1.0',
@@ -215,13 +204,10 @@ describe('ML Price Prediction — Frontend', () => {
       status: 'SUCCESS',
       productId: 1,
       currentPrice: 58999,
-      predictedPrice7d: 56500,
+      predictedPrice: 56500,
       predictedChange: -2499,
       predictedChangePercent: -4.24,
       recommendation: 'WAIT',
-      confidenceLabel: 'Low',
-      predictedPriceLow: 53000,
-      predictedPriceHigh: 60000,
       dealQuality: 'GOOD_DEAL',
       modelName: 'RandomForestRegressor',
     });

@@ -46,11 +46,10 @@ class PricePredictionControllerTest {
                 .productId(1L)
                 .productName("iPhone 15 Pro")
                 .currentPrice(new BigDecimal("58999.00"))
-                .predictedPrice7d(new BigDecimal("56500.00"))
+                .predictedPrice(new BigDecimal("56500.00"))
                 .predictedChange(new BigDecimal("-2499.00"))
                 .predictedChangePercent(-4.24)
                 .recommendation("WAIT")
-                .confidenceLabel("Medium")
                 .dealQuality("GOOD_DEAL")
                 .modelName("RandomForestRegressor")
                 .dataPointsUsed(30)
@@ -61,6 +60,7 @@ class PricePredictionControllerTest {
         mockMvc.perform(get("/api/products/1/prediction").accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("SUCCESS"))
+                .andExpect(jsonPath("$.predictedPrice").value(56500.00))
                 .andExpect(jsonPath("$.recommendation").value("WAIT"))
                 .andExpect(jsonPath("$.dealQuality").value("GOOD_DEAL"))
                 .andExpect(jsonPath("$.modelName").value("RandomForestRegressor"));
@@ -81,7 +81,7 @@ class PricePredictionControllerTest {
         mockMvc.perform(get("/api/products/2/prediction").accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("INSUFFICIENT_DATA"))
-                .andExpect(jsonPath("$.predictedPrice7d").doesNotExist());
+                .andExpect(jsonPath("$.predictedPrice").doesNotExist());
     }
 
     @Test

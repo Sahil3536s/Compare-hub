@@ -47,23 +47,23 @@ public class MLServiceClient {
     }
 
     /**
-     * Call the ML service /predict-price endpoint.
+     * Call the ML service /predict endpoint.
      *
      * @param productId   the product ID
-     * @param pricePoints list of {date, price, merchant} maps in chronological order
+     * @param pricePoints list of typed price point observations in chronological order
      * @return Optional containing the ML response, or empty if the ML service is unavailable
      */
     @CircuitBreaker(name = "mlService", fallbackMethod = "predictFallback")
-    public Optional<MLServiceResponseDto> predict(Long productId, List<Map<String, Object>> pricePoints) {
-        log.debug("[ML] Calling predict-price for product {} with {} points", productId, pricePoints.size());
+    public Optional<MLServiceResponseDto> predict(Long productId, List<com.comparehub.dto.MLPricePointDto> pricePoints) {
+        log.debug("[ML] Calling /predict for product {} with {} points", productId, pricePoints.size());
 
-        var requestBody = Map.of(
-                "product_id", (Object) productId,
-                "price_points", pricePoints
-        );
+        var requestBody = com.comparehub.dto.MLPredictionRequestDto.builder()
+                .productId(productId)
+                .pricePoints(pricePoints)
+                .build();
 
         var response = restClient.post()
-                .uri("/predict-price")
+                .uri("/predict")
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(requestBody)
                 .retrieve()
@@ -78,7 +78,7 @@ public class MLServiceClient {
      * Returns Optional.empty() so the caller can return ML_UNAVAILABLE gracefully.
      */
     public Optional<MLServiceResponseDto> predictFallback(
-            Long productId, List<Map<String, Object>> pricePoints, Exception ex) {
+            Long productId, List<com.comparehub.dto.MLPricePointDto> pricePoints, Exception ex) {
         log.warn("[ML] Circuit breaker fallback triggered for product {} — reason: {}",
                 productId, ex.getMessage());
         return Optional.empty();

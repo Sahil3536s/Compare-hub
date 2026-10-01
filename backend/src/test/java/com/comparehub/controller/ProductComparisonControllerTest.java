@@ -34,6 +34,9 @@ class ProductComparisonControllerTest {
     private ProductComparisonService productComparisonService;
 
     @MockBean
+    private com.comparehub.service.ProductService productService;
+
+    @MockBean
     private JwtTokenProvider jwtTokenProvider;
 
     @MockBean

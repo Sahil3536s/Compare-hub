@@ -1,6 +1,8 @@
 package com.comparehub.service;
 
+import com.comparehub.dto.DealQualityDto;
 import com.comparehub.dto.ProductPriceHistoryResponseDto;
+import com.comparehub.dto.PurchaseTimingDto;
 import com.comparehub.model.Product;
 import com.comparehub.model.ProductPriceHistory;
 import com.comparehub.repository.ProductPriceHistoryRepository;
@@ -28,6 +30,12 @@ class PriceHistoryServiceImplTest {
     @Mock
     private ProductRepository productRepository;
 
+    @Mock
+    private DealQualityService dealQualityService;
+
+    @Mock
+    private PurchaseTimingService purchaseTimingService;
+
     @InjectMocks
     private PriceHistoryServiceImpl service;
 
@@ -39,7 +47,10 @@ class PriceHistoryServiceImplTest {
         product = new Product();
         product.setId(1L);
         product.setName("Test Product");
-        // product.setOffers(...) not needed for basic stats
+        when(dealQualityService.calculateDealQuality(any(), any(), any(), any(), any()))
+                .thenReturn(new DealQualityDto());
+        when(purchaseTimingService.analyzeTiming(any(), any()))
+                .thenReturn(new PurchaseTimingDto());
     }
 
     @Test

@@ -50,9 +50,11 @@ class LocationServiceTest {
         mockLocationService = new LocationServiceImpl(mockProvider);
 
         fallbackProvider = new MapboxLocationProvider(null, objectMapper, null, true, "in");
+        fallbackProvider.setMapboxAccessToken("");
         fallbackLocationService = new LocationServiceImpl(fallbackProvider);
 
         strictNoTokenProvider = new MapboxLocationProvider(null, objectMapper, null, false, "in");
+        strictNoTokenProvider.setMapboxAccessToken("");
         strictNoTokenLocationService = new LocationServiceImpl(strictNoTokenProvider);
     }
 
