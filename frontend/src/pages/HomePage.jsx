@@ -30,13 +30,38 @@ export const HomePage = () => {
     }
   }, [searchParams]);
 
-  const sampleQueries = [
-    { label: '📱 iPhone 15 128GB', query: 'iPhone 15 128GB' },
-    { label: '💻 MacBook Air M3', query: 'MacBook Air M3' },
-    { label: '✈️ Delhi to Mumbai flight', query: 'Delhi to Mumbai flight tomorrow' },
-    { label: '🚗 Ride to Airport', query: 'ride to Bhopal Airport' },
-    { label: '🎧 Sony WH-1000XM5', query: 'Sony WH-1000XM5' },
+  const SEARCH_TYPES = [
+    { id: 'products', label: 'Products', icon: '🛍️', placeholder: 'Search a product or paste a product link' },
+    { id: 'flights', label: 'Flights', icon: '✈️', placeholder: 'Search flights e.g. Delhi to Mumbai tomorrow' },
+    { id: 'rides', label: 'Rides', icon: '🚗', placeholder: 'Search rides e.g. ride to airport or station' },
   ];
+
+  const [activeCategory, setActiveCategory] = useState('products');
+
+  const contextualSampleQueries = {
+    products: [
+      { label: '📱 iPhone 15 128GB', query: 'iPhone 15 128GB' },
+      { label: '💻 MacBook Air M3', query: 'MacBook Air M3' },
+      { label: '🎧 Sony WH-1000XM5', query: 'Sony WH-1000XM5' },
+      { label: '⌚ Galaxy Watch 6', query: 'Samsung Galaxy Watch 6' },
+      { label: '👟 Nike Air Max', query: 'Nike Air Max' },
+    ],
+    flights: [
+      { label: '✈️ Delhi to Mumbai flight', query: 'Delhi to Mumbai flight tomorrow' },
+      { label: '🛫 Bengaluru to Delhi', query: 'Bengaluru to Delhi flight' },
+      { label: '🏖️ Mumbai to Goa flight', query: 'Mumbai to Goa flight' },
+      { label: '🏙️ Kolkata to Bengaluru', query: 'Kolkata to Bengaluru flight' },
+    ],
+    rides: [
+      { label: '🚗 Ride to Airport', query: 'ride to Bhopal Airport' },
+      { label: '🚕 IGI Airport to Cyber Hub', query: 'ride from IGI Airport to Cyber Hub' },
+      { label: '🛵 Station to City Center', query: 'ride to Bhopal Junction' },
+      { label: '🚙 Ride to Mall', query: 'ride to Phoenix Mall' },
+    ],
+  };
+
+  const currentSearchType = SEARCH_TYPES.find((t) => t.id === activeCategory) || SEARCH_TYPES[0];
+  const sampleQueries = contextualSampleQueries[activeCategory] || contextualSampleQueries.products;
 
   const handleUniversalSearch = async (queryToSearch) => {
     const q = (queryToSearch !== undefined ? queryToSearch : searchQuery).trim();
@@ -85,38 +110,68 @@ export const HomePage = () => {
   );
 
   return (
-    <div className="space-y-12 sm:space-y-16 pb-16 min-w-0 bg-slate-50/40">
+    <div className="space-y-8 sm:space-y-12 pb-12 min-w-0 bg-slate-50/40">
 
       {/* Hero Section */}
-      <section className="relative pt-10 sm:pt-16 pb-12 sm:pb-16 border-b border-slate-200/70 bg-gradient-to-b from-white via-indigo-50/20 to-slate-50/50">
+      <section className="relative pt-6 sm:pt-10 pb-8 sm:pb-10 border-b border-slate-200/70 bg-gradient-to-b from-white via-indigo-50/20 to-slate-50/50">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
 
-          {/* Platform Status Badge */}
-          <div className="flex items-center justify-center gap-2 mb-6">
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-100">
+          {/* Platform Status / Eyebrow Pill */}
+          <div className="flex items-center justify-center gap-2 mb-3 sm:mb-4">
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200/60 shadow-2xs">
               ⚡ Multi-Platform Price Intelligence
             </span>
-            <StatusBadge
-              isConnected={isConnected}
-              loading={healthLoading}
-              error={healthError}
-              onRetry={refetchHealth}
-            />
+            {healthError && !isConnected && (
+              <StatusBadge
+                isConnected={isConnected}
+                loading={healthLoading}
+                error={healthError}
+                onRetry={refetchHealth}
+              />
+            )}
           </div>
 
-          {/* Main Headings (Verbatim from specification) */}
-          <div className="text-center space-y-3 sm:space-y-4 mb-8 sm:mb-10">
-            <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black tracking-tight text-slate-900 leading-tight">
+          {/* Main Headings */}
+          <div className="text-center space-y-2 sm:space-y-2.5 mb-5 sm:mb-6">
+            <h1 className="text-3xl sm:text-5xl lg:text-5xl font-black tracking-tight text-slate-900 leading-[1.15]">
               Compare prices. <span className="text-indigo-600">Decide smarter.</span>
             </h1>
-            <p className="text-base sm:text-lg lg:text-xl text-slate-600 font-normal max-w-2xl mx-auto leading-relaxed">
+            <p className="text-sm sm:text-base lg:text-lg text-slate-600 font-normal max-w-xl mx-auto leading-relaxed">
               Compare products, flights and rides in one place.
             </p>
           </div>
 
+          {/* Search-Type Selector */}
+          <div className="flex items-center justify-center gap-1.5 sm:gap-2 mb-3" role="tablist" aria-label="Search category">
+            {SEARCH_TYPES.map((type) => {
+              const isActive = activeCategory === type.id;
+              return (
+                <button
+                  key={type.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={isActive}
+                  onClick={() => {
+                    setActiveCategory(type.id);
+                    const input = document.getElementById('universal-search-input');
+                    if (input) input.focus();
+                  }}
+                  className={`px-3.5 sm:px-4 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                    isActive
+                      ? 'bg-indigo-600 text-white shadow-xs'
+                      : 'bg-white hover:bg-slate-100 text-slate-600 hover:text-slate-900 border border-slate-200/80 shadow-2xs'
+                  }`}
+                >
+                  <span>{type.icon}</span>
+                  <span>{type.label}</span>
+                </button>
+              );
+            })}
+          </div>
+
           {/* Large Central Search Area */}
           <div className="max-w-3xl mx-auto">
-            <div className="bg-white rounded-3xl border border-slate-200 shadow-lg hover:shadow-xl transition-shadow p-2.5 sm:p-3.5">
+            <div className="bg-white rounded-3xl border border-slate-200 shadow-md hover:shadow-lg transition-shadow p-2 sm:p-2.5">
               <form onSubmit={handleFormSubmit} className="flex flex-col sm:flex-row items-center gap-2" role="search">
                 
                 {/* Search Input Container */}
@@ -133,10 +188,10 @@ export const HomePage = () => {
                     type="text"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search a product or paste a product link"
+                    placeholder={currentSearchType.placeholder}
                     aria-label="Universal search query"
                     autoComplete="off"
-                    className="w-full pl-12 pr-10 py-3.5 sm:py-4 rounded-2xl bg-transparent text-slate-900 text-sm sm:text-base placeholder:text-slate-400 focus:outline-hidden min-h-[48px]"
+                    className="w-full pl-12 pr-10 py-3 sm:py-3.5 rounded-2xl bg-transparent text-slate-900 text-sm sm:text-base placeholder:text-slate-400 focus:outline-hidden min-h-[48px]"
                   />
 
                   {/* Clear Button */}
@@ -154,12 +209,12 @@ export const HomePage = () => {
                   )}
                 </div>
 
-                {/* Submit Search Button */}
+                {/* Submit Search Button (Strengthened CTA) */}
                 <button
                   type="submit"
                   disabled={isSearching || !searchQuery.trim()}
                   aria-label="Search"
-                  className="w-full sm:w-auto px-6 sm:px-8 py-3.5 sm:py-4 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold text-sm sm:text-base rounded-2xl transition shadow-xs hover:shadow-md flex items-center justify-center gap-2 shrink-0 cursor-pointer min-h-[48px]"
+                  className="w-full sm:w-auto px-6 sm:px-8 py-3 sm:py-3.5 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 disabled:bg-slate-200 disabled:text-slate-400 text-white font-extrabold text-sm sm:text-base rounded-2xl transition-all shadow-md hover:shadow-indigo-500/20 active:scale-[0.99] flex items-center justify-center gap-2 shrink-0 cursor-pointer min-h-[48px]"
                 >
                   {isSearching ? (
                     <span className="flex items-center gap-2">
@@ -170,26 +225,69 @@ export const HomePage = () => {
                     <>
                       <span>Search</span>
                       <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M14 5l7 7m0 0l-7 7m7-7H3" />
                       </svg>
                     </>
                   )}
                 </button>
               </form>
 
-              {/* Sample Queries Chips */}
-              <div className="pt-2.5 mt-2 border-t border-slate-100 flex flex-wrap items-center gap-1.5 sm:gap-2 px-2 text-xs">
-                <span className="text-slate-400 font-semibold mr-1">Popular:</span>
+              {/* Contextual Sample Queries Chips */}
+              <div className="pt-2 mt-2 border-t border-slate-100 flex flex-wrap items-center gap-1.5 sm:gap-2 px-2 text-xs">
+                <span className="text-slate-500 font-bold mr-1">Popular:</span>
                 {sampleQueries.map((sample) => (
                   <button
                     key={sample.query}
                     type="button"
                     onClick={() => handleSelectSample(sample)}
-                    className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-indigo-50 hover:text-indigo-700 text-slate-600 font-medium transition cursor-pointer"
+                    className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-indigo-50 hover:text-indigo-700 hover:border-indigo-200 text-slate-700 font-semibold border border-transparent transition cursor-pointer"
                   >
                     {sample.label}
                   </button>
                 ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Compact Benefits Row */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3 max-w-4xl mx-auto mt-6 pt-5 border-t border-slate-200/70">
+            <div className="flex items-center gap-2.5 p-2.5 sm:p-3 rounded-2xl bg-white/80 border border-slate-200/80 shadow-2xs">
+              <span className="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-700 flex items-center justify-center text-sm font-bold shrink-0">
+                ⚡
+              </span>
+              <div className="min-w-0">
+                <div className="text-xs font-bold text-slate-900 truncate">Multiple Sources</div>
+                <div className="text-[11px] text-slate-500 font-medium truncate">Multi-store live prices</div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2.5 p-2.5 sm:p-3 rounded-2xl bg-white/80 border border-slate-200/80 shadow-2xs">
+              <span className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center text-sm font-bold shrink-0">
+                📈
+              </span>
+              <div className="min-w-0">
+                <div className="text-xs font-bold text-slate-900 truncate">Price History</div>
+                <div className="text-[11px] text-slate-500 font-medium truncate">Trend & price meter</div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2.5 p-2.5 sm:p-3 rounded-2xl bg-white/80 border border-slate-200/80 shadow-2xs">
+              <span className="w-8 h-8 rounded-xl bg-amber-50 text-amber-700 flex items-center justify-center text-sm font-bold shrink-0">
+                ⚖️
+              </span>
+              <div className="min-w-0">
+                <div className="text-xs font-bold text-slate-900 truncate">Smart Ranking</div>
+                <div className="text-[11px] text-slate-500 font-medium truncate">Multi-factor best value</div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2.5 p-2.5 sm:p-3 rounded-2xl bg-white/80 border border-slate-200/80 shadow-2xs">
+              <span className="w-8 h-8 rounded-xl bg-purple-50 text-purple-700 flex items-center justify-center text-sm font-bold shrink-0">
+                ✨
+              </span>
+              <div className="min-w-0">
+                <div className="text-xs font-bold text-slate-900 truncate">AI Insights</div>
+                <div className="text-[11px] text-slate-500 font-medium truncate">Verified decision advisor</div>
               </div>
             </div>
           </div>
@@ -358,23 +456,23 @@ export const HomePage = () => {
         <SmartDealsSection />
       </div>
 
-      {/* Value Proposition Strip (Preserved) */}
+      {/* Value Proposition Strip (Factual & Professional) */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="bg-slate-900 rounded-3xl p-6 sm:p-10 text-white grid grid-cols-1 md:grid-cols-3 gap-6 sm:gap-8 text-center sm:text-left">
-          <div className="space-y-1.5">
-            <div className="text-2xl sm:text-3xl font-black text-indigo-400">100%</div>
+        <div className="bg-slate-900 rounded-3xl p-6 sm:p-8 text-white grid grid-cols-1 md:grid-cols-3 gap-6 sm:gap-8 text-center sm:text-left">
+          <div className="space-y-1">
+            <div className="text-xl sm:text-2xl font-black text-indigo-400">Direct & Unbiased</div>
             <div className="font-bold text-sm sm:text-base">Transparent Comparison</div>
-            <p className="text-xs text-slate-400">Directly aggregated with no hidden markups or biased rankings.</p>
+            <p className="text-xs text-slate-400">Directly aggregated with no hidden markups, referral bias, or sponsored rankings.</p>
           </div>
-          <div className="space-y-1.5">
-            <div className="text-2xl sm:text-3xl font-black text-emerald-400">₹14,500+</div>
-            <div className="font-bold text-sm sm:text-base">Avg. Yearly Savings</div>
-            <p className="text-xs text-slate-400">Saved per household by checking multiple merchants before buying.</p>
+          <div className="space-y-1">
+            <div className="text-xl sm:text-2xl font-black text-emerald-400">Multi-Factor</div>
+            <div className="font-bold text-sm sm:text-base">Deterministic Ranking</div>
+            <p className="text-xs text-slate-400">Normalized mathematical scoring across price, customer reviews, delivery speed, and value.</p>
           </div>
-          <div className="space-y-1.5">
-            <div className="text-2xl sm:text-3xl font-black text-amber-400">Instant</div>
+          <div className="space-y-1">
+            <div className="text-xl sm:text-2xl font-black text-amber-400">Live Feeds</div>
             <div className="font-bold text-sm sm:text-base">Real-Time Aggregation</div>
-            <p className="text-xs text-slate-400">Concurrent multi-provider queries returning true effective rates.</p>
+            <p className="text-xs text-slate-400">Concurrent multi-provider queries returning true effective rates and verified availability.</p>
           </div>
         </div>
       </section>

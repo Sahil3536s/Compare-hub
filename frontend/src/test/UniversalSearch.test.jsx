@@ -262,6 +262,10 @@ describe('Universal Search & Homepage Integration', () => {
       </BrowserRouter>
     );
 
+    // Switch to Flights category tab to display contextual flight chips
+    const flightsTab = screen.getByRole('tab', { name: /Flights/i });
+    fireEvent.click(flightsTab);
+
     const sampleChip = screen.getByText(/Delhi to Mumbai flight/i);
     fireEvent.click(sampleChip);
 
@@ -270,5 +274,40 @@ describe('Universal Search & Homepage Integration', () => {
       expect(screen.getByText(/Flight Route Comparison/i)).toBeInTheDocument();
       expect(screen.getByText(/IndiGo/i)).toBeInTheDocument();
     });
+  });
+
+  it('renders search-type selector tabs and switches contextual chips and placeholders', async () => {
+    render(
+      <BrowserRouter>
+        <HomePage />
+      </BrowserRouter>
+    );
+
+    // Initial state: Products tab active
+    const productsTab = screen.getByRole('tab', { name: /Products/i });
+    const flightsTab = screen.getByRole('tab', { name: /Flights/i });
+    const ridesTab = screen.getByRole('tab', { name: /Rides/i });
+
+    expect(productsTab).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByPlaceholderText('Search a product or paste a product link')).toBeInTheDocument();
+    expect(screen.getByText(/iPhone 15 128GB/i)).toBeInTheDocument();
+
+    // Switch to Flights tab
+    fireEvent.click(flightsTab);
+    expect(flightsTab).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByPlaceholderText(/Search flights/i)).toBeInTheDocument();
+    expect(screen.getByText(/Delhi to Mumbai flight/i)).toBeInTheDocument();
+
+    // Switch to Rides tab
+    fireEvent.click(ridesTab);
+    expect(ridesTab).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByPlaceholderText(/Search rides/i)).toBeInTheDocument();
+    expect(screen.getByText(/Ride to Airport/i)).toBeInTheDocument();
+
+    // Compact benefits row
+    expect(screen.getByText('Multiple Sources')).toBeInTheDocument();
+    expect(screen.getByText('Price History')).toBeInTheDocument();
+    expect(screen.getByText('Smart Ranking')).toBeInTheDocument();
+    expect(screen.getByText('AI Insights')).toBeInTheDocument();
   });
 });
