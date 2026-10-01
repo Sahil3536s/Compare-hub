@@ -35,7 +35,7 @@ describe('Universal Search & Homepage Integration', () => {
 
     // Headings
     expect(screen.getByText(/Compare prices\./i)).toBeInTheDocument();
-    expect(screen.getByText(/Decide smarter\./i)).toBeInTheDocument();
+    // TypewriterText starts typing from empty (charIndex=0), so no static phrase check here
     expect(screen.getByText(/Compare products, flights and rides in one place\./i)).toBeInTheDocument();
 
     // Universal Search Bar
