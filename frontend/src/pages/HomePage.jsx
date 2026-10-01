@@ -19,6 +19,95 @@ export const HomePage = () => {
   const [searchError, setSearchError] = useState(null);
   const [hasSearched, setHasSearched] = useState(false);
 
+  // Typewriter animation phrases
+  const TYPEWRITER_PHRASES = [
+    'Decide smarter.',
+    'Save more.',
+    'Find better deals.',
+    'Travel smarter.',
+    'Shop smarter.',
+    'Compare everything.',
+  ];
+
+  const [phraseIndex, setPhraseIndex] = useState(0);
+  const [displayText, setDisplayText] = useState(TYPEWRITER_PHRASES[0]);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [isHolding, setIsHolding] = useState(true);
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
+
+  // Check prefers-reduced-motion
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+
+    try {
+      const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+      setPrefersReducedMotion(mediaQuery.matches);
+
+      const handler = (e) => setPrefersReducedMotion(e.matches);
+      if (mediaQuery.addEventListener) {
+        mediaQuery.addEventListener('change', handler);
+      } else if (mediaQuery.addListener) {
+        mediaQuery.addListener(handler);
+      }
+
+      return () => {
+        if (mediaQuery.removeEventListener) {
+          mediaQuery.removeEventListener('change', handler);
+        } else if (mediaQuery.removeListener) {
+          mediaQuery.removeListener(handler);
+        }
+      };
+    } catch {
+      // Fallback gracefully
+    }
+  }, []);
+
+  // Typewriter animation loop (~5s cycle, visible hold, clean timer cleanup)
+  useEffect(() => {
+    if (prefersReducedMotion) {
+      setDisplayText(TYPEWRITER_PHRASES[0]);
+      return;
+    }
+
+    const currentPhrase = TYPEWRITER_PHRASES[phraseIndex];
+    let timerId;
+
+    if (isHolding) {
+      // Keep completed phrase visible for ~3500ms
+      timerId = setTimeout(() => {
+        setIsHolding(false);
+        setIsDeleting(true);
+      }, 3500);
+    } else if (isDeleting) {
+      if (displayText.length > 0) {
+        timerId = setTimeout(() => {
+          setDisplayText(currentPhrase.substring(0, displayText.length - 1));
+        }, 35);
+      } else {
+        // Deletion complete; switch to next phrase and pause briefly
+        setIsDeleting(false);
+        setPhraseIndex((prev) => (prev + 1) % TYPEWRITER_PHRASES.length);
+        timerId = setTimeout(() => {
+          // Pause before typing next phrase
+        }, 200);
+      }
+    } else {
+      // Typing forward character-by-character
+      if (displayText.length < currentPhrase.length) {
+        timerId = setTimeout(() => {
+          setDisplayText(currentPhrase.substring(0, displayText.length + 1));
+        }, 65);
+      } else {
+        // Typing complete; hold the phrase
+        setIsHolding(true);
+      }
+    }
+
+    return () => {
+      if (timerId) clearTimeout(timerId);
+    };
+  }, [displayText, isDeleting, isHolding, phraseIndex, prefersReducedMotion]);
+
   // Focus search input if directed from navbar search icon
   useEffect(() => {
     if (searchParams.get('focusSearch') === 'true') {
@@ -131,10 +220,28 @@ export const HomePage = () => {
             )}
           </div>
 
-          {/* Main Headings */}
+          {/* Main Headings with Professional Typewriter Effect */}
           <div className="text-center space-y-2 sm:space-y-2.5 mb-5 sm:mb-6">
-            <h1 className="text-3xl sm:text-5xl lg:text-5xl font-black tracking-tight text-slate-900 leading-[1.15]">
-              Compare prices. <span className="text-indigo-600">Decide smarter.</span>
+            <h1 className="text-3xl sm:text-5xl lg:text-5xl font-black tracking-tight text-slate-900 leading-[1.18]">
+              <span className="block sm:inline">Compare prices.</span>{' '}
+              <span className="inline-grid text-left align-baseline">
+                {/* Invisible sizer using the longest phrase to prevent layout shift */}
+                <span className="invisible select-none col-start-1 row-start-1 pointer-events-none" aria-hidden="true">
+                  Compare everything.
+                </span>
+                {/* Visible animated text */}
+                <span className="col-start-1 row-start-1 inline-flex items-baseline">
+                  <span className="text-indigo-600 bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-700 bg-clip-text text-transparent">
+                    {displayText}
+                  </span>
+                  {!prefersReducedMotion && (
+                    <span
+                      className="inline-block w-[2px] sm:w-[3px] h-[0.85em] bg-indigo-600 ml-0.5 align-baseline animate-pulse shrink-0"
+                      aria-hidden="true"
+                    />
+                  )}
+                </span>
+              </span>
             </h1>
             <p className="text-sm sm:text-base lg:text-lg text-slate-600 font-normal max-w-xl mx-auto leading-relaxed">
               Compare products, flights and rides in one place.
