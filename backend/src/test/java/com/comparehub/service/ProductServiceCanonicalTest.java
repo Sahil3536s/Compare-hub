@@ -275,8 +275,62 @@ private PurchaseTimingService purchaseTimingService;
         // Verify MerchantOffer saved for both
         verify(merchantOfferRepository, times(2)).save(any(MerchantOffer.class));
 
-        // Verify that priceHistoryRepository.save was NOT called for demo data, only at most once for live data!
-        // (PriceHistoryServiceImpl.recordPriceIfChanged checks and saves)
-        verify(priceHistoryRepository, atMost(1)).save(any(ProductPriceHistory.class));
+        // Verify that priceHistoryRepository.save was NOT called for demo data, only for live data with VERIFIED_LIVE!
+        org.mockito.ArgumentCaptor<ProductPriceHistory> captor = org.mockito.ArgumentCaptor.forClass(ProductPriceHistory.class);
+        verify(priceHistoryRepository, times(1)).save(captor.capture());
+        ProductPriceHistory saved = captor.getValue();
+        assertEquals("LIVE", saved.getDataSource());
+        assertEquals(true, saved.getIsLive());
+        assertEquals("VERIFIED_LIVE", saved.getProvenance());
+    }
+
+    @Test
+    void testPersistenceService_NeverUpgradesUnknownOrDemoDataToVerifiedLive() {
+        Product product = Product.builder()
+                .id(201L)
+                .name("Test Audio Device")
+                .brand("Brand")
+                .category("Audio")
+                .build();
+
+        when(productRepository.findFirstByNameIgnoreCase(anyString())).thenReturn(Optional.of(product));
+        when(merchantOfferRepository.findByProductIdOrderByPriceAsc(201L)).thenReturn(new ArrayList<>());
+
+        // Offers with UNKNOWN, DEMO, and null provenance
+        NormalizedProductOfferDto unknownOffer = NormalizedProductOfferDto.builder()
+                .merchant("UnknownMerchant")
+                .price(new BigDecimal("15000.00"))
+                .dataSource("UNKNOWN")
+                .live(false)
+                .build();
+
+        NormalizedProductOfferDto mismatchedOffer = NormalizedProductOfferDto.builder()
+                .merchant("DemoStore")
+                .price(new BigDecimal("12000.00"))
+                .dataSource("DEMO")
+                .live(true) // live is true but dataSource is DEMO!
+                .build();
+
+        NormalizedProductOfferDto nullOffer = NormalizedProductOfferDto.builder()
+                .merchant("NullStore")
+                .price(new BigDecimal("14000.00"))
+                .dataSource(null)
+                .live(null)
+                .build();
+
+        CanonicalProductGroupDto group = CanonicalProductGroupDto.builder()
+                .canonicalTitle("Test Audio Device")
+                .brand("Brand")
+                .category("Audio")
+                .offers(List.of(unknownOffer, mismatchedOffer, nullOffer))
+                .build();
+
+        persistenceService.persistCanonicalGroupsAndOffers(List.of(group));
+
+        // MerchantOffer saved for all three
+        verify(merchantOfferRepository, times(3)).save(any(MerchantOffer.class));
+
+        // Verify that priceHistoryRepository.save was NEVER called for any of these non-genuine offers
+        verify(priceHistoryRepository, never()).save(any(ProductPriceHistory.class));
     }
 }

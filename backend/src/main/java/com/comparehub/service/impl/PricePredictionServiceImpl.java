@@ -138,7 +138,7 @@ public class PricePredictionServiceImpl implements com.comparehub.service.PriceP
      * required for ML price prediction.
      *
      * Rules:
-     * - Uses structured metadata: requires isLive == true AND dataSource == "LIVE".
+     * - Uses structured metadata: requires isLive == true, dataSource == "LIVE", AND provenance == "VERIFIED_LIVE".
      * - Does NOT rely on merchant-name substring matching.
      * - Fails safely for unknown, unverified, or demo provenance.
      */
@@ -149,7 +149,7 @@ public class PricePredictionServiceImpl implements com.comparehub.service.PriceP
 
         // 1. Structured isLive verification: must be explicitly true
         Boolean isLive = h.getIsLive();
-        if (isLive == null || !isLive) {
+        if (!Boolean.TRUE.equals(isLive)) {
             return false; // Fail safely: unknown or non-live observations rejected
         }
 
@@ -157,6 +157,12 @@ public class PricePredictionServiceImpl implements com.comparehub.service.PriceP
         String dataSource = h.getDataSource();
         if (dataSource == null || !"LIVE".equalsIgnoreCase(dataSource.trim())) {
             return false; // Fail safely: unknown or non-live data sources rejected
+        }
+
+        // 3. Structured provenance verification: must be explicitly "VERIFIED_LIVE"
+        String provenance = h.getProvenance();
+        if (provenance == null || !"VERIFIED_LIVE".equalsIgnoreCase(provenance.trim())) {
+            return false; // Fail safely: unknown, demo, or unverified provenance rejected
         }
 
         return true;

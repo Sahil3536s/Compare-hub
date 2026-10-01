@@ -46,14 +46,15 @@ public class ProductPriceHistory {
 
     @Column(name = "data_source", length = 30)
     @Builder.Default
-    private String dataSource = "LIVE";
+    private String dataSource = "UNKNOWN";
 
     @Column(name = "is_live")
     @Builder.Default
-    private Boolean isLive = true;
+    private Boolean isLive = false;
 
     @Column(name = "provenance", length = 50)
-    private String provenance;
+    @Builder.Default
+    private String provenance = "UNKNOWN";
 
     @Column(name = "recorded_at", nullable = false, updatable = false)
     @Builder.Default
@@ -66,6 +67,15 @@ public class ProductPriceHistory {
         }
         if (currency == null) {
             currency = "INR";
+        }
+        if (dataSource == null) {
+            dataSource = "UNKNOWN";
+        }
+        if (isLive == null) {
+            isLive = false;
+        }
+        if (provenance == null) {
+            provenance = "UNKNOWN";
         }
     }
 }

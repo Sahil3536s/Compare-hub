@@ -7,10 +7,14 @@ import java.math.BigDecimal;
 
 public interface PriceHistoryService {
 
-    void recordPriceIfChanged(Product product, String merchant, BigDecimal price, String currency, String dataSource, Boolean isLive);
+    void recordPriceIfChanged(Product product, String merchant, BigDecimal price, String currency, String dataSource, Boolean isLive, String provenance);
+
+    default void recordPriceIfChanged(Product product, String merchant, BigDecimal price, String currency, String dataSource, Boolean isLive) {
+        recordPriceIfChanged(product, merchant, price, currency, dataSource, isLive, null);
+    }
 
     default void recordPriceIfChanged(Product product, String merchant, BigDecimal price, String currency) {
-        recordPriceIfChanged(product, merchant, price, currency, "UNKNOWN", false);
+        recordPriceIfChanged(product, merchant, price, currency, "UNKNOWN", false, "UNVERIFIED");
     }
 
     ProductPriceHistoryResponseDto getPriceHistory(Long productId, String period);

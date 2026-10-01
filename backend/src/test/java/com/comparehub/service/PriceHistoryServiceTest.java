@@ -106,4 +106,56 @@ class PriceHistoryServiceTest {
         assertEquals(new BigDecimal("75000.00"), response.getAveragePrice());
         assertTrue(response.getAnalysisText().contains("below the 30-day average"));
     }
+
+    @Test
+    void shouldDefaultProvenanceToUnknownAndUnverified() {
+        Product product = Product.builder().id(1L).name("iPhone 15").build();
+        when(priceHistoryRepository.findTopByProductIdAndMerchantOrderByRecordedAtDesc(1L, "Amazon"))
+                .thenReturn(Optional.empty());
+
+        org.mockito.ArgumentCaptor<ProductPriceHistory> captor = org.mockito.ArgumentCaptor.forClass(ProductPriceHistory.class);
+
+        priceHistoryService.recordPriceIfChanged(product, "Amazon", new BigDecimal("74999.00"), "INR");
+
+        verify(priceHistoryRepository).save(captor.capture());
+        ProductPriceHistory saved = captor.getValue();
+        assertEquals("UNKNOWN", saved.getDataSource());
+        assertEquals(false, saved.getIsLive());
+        assertEquals("UNVERIFIED", saved.getProvenance());
+    }
+
+    @Test
+    void shouldNeverUpgradeDemoOrUnknownDataToVerifiedLive() {
+        Product product = Product.builder().id(1L).name("iPhone 15").build();
+        when(priceHistoryRepository.findTopByProductIdAndMerchantOrderByRecordedAtDesc(1L, "DemoMerchant"))
+                .thenReturn(Optional.empty());
+
+        org.mockito.ArgumentCaptor<ProductPriceHistory> captor = org.mockito.ArgumentCaptor.forClass(ProductPriceHistory.class);
+
+        // Attempting to pass isLive=true with DEMO dataSource and VERIFIED_LIVE provenance
+        priceHistoryService.recordPriceIfChanged(product, "DemoMerchant", new BigDecimal("74999.00"), "INR", "DEMO", true, "VERIFIED_LIVE");
+
+        verify(priceHistoryRepository).save(captor.capture());
+        ProductPriceHistory saved = captor.getValue();
+        assertEquals("DEMO", saved.getDataSource());
+        assertEquals(false, saved.getIsLive(), "Must not be live for DEMO data");
+        assertEquals("DEMO_DATA", saved.getProvenance(), "Must not upgrade to VERIFIED_LIVE");
+    }
+
+    @Test
+    void shouldAssignVerifiedLiveOnlyForGenuinelyLiveOffers() {
+        Product product = Product.builder().id(1L).name("iPhone 15").build();
+        when(priceHistoryRepository.findTopByProductIdAndMerchantOrderByRecordedAtDesc(1L, "LiveMerchant"))
+                .thenReturn(Optional.empty());
+
+        org.mockito.ArgumentCaptor<ProductPriceHistory> captor = org.mockito.ArgumentCaptor.forClass(ProductPriceHistory.class);
+
+        priceHistoryService.recordPriceIfChanged(product, "LiveMerchant", new BigDecimal("74999.00"), "INR", "LIVE", true, "VERIFIED_LIVE");
+
+        verify(priceHistoryRepository).save(captor.capture());
+        ProductPriceHistory saved = captor.getValue();
+        assertEquals("LIVE", saved.getDataSource());
+        assertEquals(true, saved.getIsLive());
+        assertEquals("VERIFIED_LIVE", saved.getProvenance());
+    }
 }

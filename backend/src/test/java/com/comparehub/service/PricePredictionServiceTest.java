@@ -280,6 +280,99 @@ class PricePredictionServiceTest {
         verifyNoInteractions(mlServiceClient);
     }
 
+    @Test
+    void shouldRejectObservationsWhenProvenanceNotVerifiedLiveEvenIfIsLiveTrueAndDataSourceLive() {
+        when(productRepository.findById(1L)).thenReturn(Optional.of(testProduct));
+
+        List<ProductPriceHistory> history = new ArrayList<>();
+        Instant base = Instant.now().minus(30, ChronoUnit.DAYS);
+
+        // 25 points with isLive=true, dataSource="LIVE", but provenance="UNVERIFIED"
+        for (int i = 0; i < 25; i++) {
+            history.add(ProductPriceHistory.builder()
+                    .id((long) i)
+                    .product(testProduct)
+                    .merchant("Amazon")
+                    .price(new BigDecimal("50000.00"))
+                    .currency("INR")
+                    .dataSource("LIVE")
+                    .isLive(true)
+                    .provenance("UNVERIFIED") // Not VERIFIED_LIVE
+                    .recordedAt(base.plus(i, ChronoUnit.DAYS))
+                    .build());
+        }
+
+        when(priceHistoryRepository.findByProductIdOrderByRecordedAtAsc(1L)).thenReturn(history);
+
+        PricePredictionResponseDto result = service.getPricePrediction(1L);
+
+        assertEquals("INSUFFICIENT_DATA", result.getStatus());
+        assertEquals(0, result.getDataPointsUsed());
+        verifyNoInteractions(mlServiceClient);
+    }
+
+    @Test
+    void shouldRejectObservationsWhenIsLiveFalseEvenIfProvenanceVerifiedLive() {
+        when(productRepository.findById(1L)).thenReturn(Optional.of(testProduct));
+
+        List<ProductPriceHistory> history = new ArrayList<>();
+        Instant base = Instant.now().minus(30, ChronoUnit.DAYS);
+
+        // 25 points with isLive=false, dataSource="LIVE", provenance="VERIFIED_LIVE"
+        for (int i = 0; i < 25; i++) {
+            history.add(ProductPriceHistory.builder()
+                    .id((long) i)
+                    .product(testProduct)
+                    .merchant("Amazon")
+                    .price(new BigDecimal("50000.00"))
+                    .currency("INR")
+                    .dataSource("LIVE")
+                    .isLive(false)
+                    .provenance("VERIFIED_LIVE")
+                    .recordedAt(base.plus(i, ChronoUnit.DAYS))
+                    .build());
+        }
+
+        when(priceHistoryRepository.findByProductIdOrderByRecordedAtAsc(1L)).thenReturn(history);
+
+        PricePredictionResponseDto result = service.getPricePrediction(1L);
+
+        assertEquals("INSUFFICIENT_DATA", result.getStatus());
+        assertEquals(0, result.getDataPointsUsed());
+        verifyNoInteractions(mlServiceClient);
+    }
+
+    @Test
+    void shouldRejectObservationsWhenDataSourceNotLiveEvenIfProvenanceVerifiedLive() {
+        when(productRepository.findById(1L)).thenReturn(Optional.of(testProduct));
+
+        List<ProductPriceHistory> history = new ArrayList<>();
+        Instant base = Instant.now().minus(30, ChronoUnit.DAYS);
+
+        // 25 points with isLive=true, dataSource="DEMO", provenance="VERIFIED_LIVE"
+        for (int i = 0; i < 25; i++) {
+            history.add(ProductPriceHistory.builder()
+                    .id((long) i)
+                    .product(testProduct)
+                    .merchant("Amazon")
+                    .price(new BigDecimal("50000.00"))
+                    .currency("INR")
+                    .dataSource("DEMO")
+                    .isLive(true)
+                    .provenance("VERIFIED_LIVE")
+                    .recordedAt(base.plus(i, ChronoUnit.DAYS))
+                    .build());
+        }
+
+        when(priceHistoryRepository.findByProductIdOrderByRecordedAtAsc(1L)).thenReturn(history);
+
+        PricePredictionResponseDto result = service.getPricePrediction(1L);
+
+        assertEquals("INSUFFICIENT_DATA", result.getStatus());
+        assertEquals(0, result.getDataPointsUsed());
+        verifyNoInteractions(mlServiceClient);
+    }
+
     // ── Recommendation values ──
 
     @Test

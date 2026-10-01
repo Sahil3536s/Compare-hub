@@ -41,12 +41,18 @@ public class PriceHistoryServiceImpl implements PriceHistoryService {
     @Override
     @Transactional
     public void recordPriceIfChanged(Product product, String merchant, BigDecimal price, String currency) {
-        recordPriceIfChanged(product, merchant, price, currency, "UNKNOWN", false);
+        recordPriceIfChanged(product, merchant, price, currency, "UNKNOWN", false, "UNVERIFIED");
     }
 
     @Override
     @Transactional
     public void recordPriceIfChanged(Product product, String merchant, BigDecimal price, String currency, String dataSource, Boolean isLive) {
+        recordPriceIfChanged(product, merchant, price, currency, dataSource, isLive, null);
+    }
+
+    @Override
+    @Transactional
+    public void recordPriceIfChanged(Product product, String merchant, BigDecimal price, String currency, String dataSource, Boolean isLive, String provenance) {
         if (product == null || price == null || merchant == null || merchant.isBlank()) {
             return;
         }
@@ -68,8 +74,18 @@ public class PriceHistoryServiceImpl implements PriceHistoryService {
         String sanitizedDataSource = (dataSource != null && !dataSource.isBlank())
                 ? dataSource.trim().toUpperCase(Locale.ROOT)
                 : "UNKNOWN";
-        boolean live = Boolean.TRUE.equals(isLive);
-        String provenance = live ? "VERIFIED_LIVE" : "DEMO_OR_UNVERIFIED";
+        boolean live = Boolean.TRUE.equals(isLive) && "LIVE".equalsIgnoreCase(sanitizedDataSource);
+
+        // Strictly assign VERIFIED_LIVE only when isLive == true AND dataSource == "LIVE".
+        // Never upgrade DEMO or UNKNOWN data.
+        String resolvedProvenance;
+        if (live && (provenance == null || "VERIFIED_LIVE".equalsIgnoreCase(provenance.trim()))) {
+            resolvedProvenance = "VERIFIED_LIVE";
+        } else if ("DEMO".equalsIgnoreCase(sanitizedDataSource)) {
+            resolvedProvenance = "DEMO_DATA";
+        } else {
+            resolvedProvenance = "UNVERIFIED";
+        }
 
         ProductPriceHistory entry = ProductPriceHistory.builder()
                 .product(product)
@@ -78,13 +94,13 @@ public class PriceHistoryServiceImpl implements PriceHistoryService {
                 .currency(currency != null ? currency : "INR")
                 .dataSource(sanitizedDataSource)
                 .isLive(live)
-                .provenance(provenance)
+                .provenance(resolvedProvenance)
                 .recordedAt(Instant.now())
                 .build();
 
         priceHistoryRepository.save(entry);
-        log.debug("Recorded price history for product {} at {}: {} (dataSource={}, isLive={})",
-                product.getId(), merchant, price, sanitizedDataSource, live);
+        log.debug("Recorded price history for product {} at {}: {} (dataSource={}, isLive={}, provenance={})",
+                product.getId(), merchant, price, sanitizedDataSource, live, resolvedProvenance);
     }
 
     @Override
