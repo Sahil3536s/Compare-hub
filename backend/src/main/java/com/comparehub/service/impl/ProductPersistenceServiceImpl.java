@@ -90,7 +90,9 @@ public class ProductPersistenceServiceImpl implements ProductPersistenceService 
 
                         if (!isDemo && price.compareTo(BigDecimal.ZERO) > 0) {
                             String currency = offerDto.getCurrency() != null ? offerDto.getCurrency() : "INR";
-                            priceHistoryService.recordPriceIfChanged(product, offerDto.getMerchant(), price, currency);
+                            String dataSource = offerDto.getDataSource() != null ? offerDto.getDataSource() : "LIVE";
+                            boolean live = offerDto.getLive() != null ? offerDto.getLive() : true;
+                            priceHistoryService.recordPriceIfChanged(product, offerDto.getMerchant(), price, currency, dataSource, live);
                         }
                     }
                 }

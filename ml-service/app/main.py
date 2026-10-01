@@ -7,6 +7,7 @@ from app.schemas import (
     HealthResponse,
     PredictionRequest,
     PredictionResponse,
+    LegacyPredictionResponse,
 )
 
 app = FastAPI(
@@ -93,17 +94,21 @@ async def predict(
 
 @app.post(
     "/predict-price",
-    response_model=PredictionResponse,
+    response_model=LegacyPredictionResponse,
     tags=["Prediction"],
-    summary="Predict product price for the next day",
+    summary="Predict product price for the next day (Legacy Compatibility)",
+    deprecated=True,
 )
 async def predict_price(
     request: PredictionRequest,
-) -> PredictionResponse:
-    return predictor.predict(
+) -> LegacyPredictionResponse:
+    res = predictor.predict(
         request.product_id,
         [p.model_dump() for p in request.price_points],
     )
+    data = res.model_dump()
+    data["predicted_price_7d"] = data.get("predicted_price")
+    return LegacyPredictionResponse(**data)
 
 
 if __name__ == "__main__":

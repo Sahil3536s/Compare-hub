@@ -1,92 +1,64 @@
 # CompareHub ML Service
 
 A FastAPI microservice that provides **ML-powered price prediction** for CompareHub.
-Predicts estimated product prices 7 days into the future using historical price data.
+Predicts estimated product prices for the **next day** using genuine historical price data.
 
 ## Machine Learning Price Intelligence
 
 ### Problem
-Predict short-term product price trends to help users decide whether to buy now or wait.
+Predict short-term (next-day) product price trends to help users decide whether to buy now or wait.
 
 ### Input
 Historical product prices from the CompareHub `product_price_history` PostgreSQL table.
-A minimum of **20 real price observations** per product is required before a prediction can be generated.
+A minimum of **20 genuine price observations** per product is required before a prediction can be generated.
 
-### Feature Engineering
+### Feature Engineering (Review 2 Model)
 
 | Feature | Description |
 |---------|-------------|
-| `current_price` | Most recent observed price |
-| `avg_price_3d/7d/14d/30d` | Rolling average over N days |
-| `min_price_7d/30d` | Rolling minimum |
-| `max_price_7d/30d` | Rolling maximum |
-| `median_price_7d/30d` | Rolling median |
-| `std_price_7d/30d` | Rolling standard deviation |
-| `price_change_1d/7d` | Absolute price change |
-| `percentage_change_7d` | Percentage change over 7 days |
-| `rolling_trend` | Linear slope of last 7 days |
-| `day_of_week` | 0=Monday … 6=Sunday |
-| `day_of_month` | 1–31 |
-| `month` | 1–12 |
-| `number_of_price_changes` | Unique prices in last 30 days |
+| `current_price` | Most recent observed price (day $t$) |
+| `previous_price` | Preceding observed price (day $t-1$) |
+| `7_day_average` | 7-observation rolling window average |
+| `price_change` | Absolute change between current and previous price |
 
 **No future data is used as input** — all features are computed strictly from past observations.
 
-### Models
+### Model
+- **RandomForestRegressor** (Review 2 Model v1.0, trained by Pranav).
+- Evaluated chronologically on historical tracking data.
 
-| Model | Role |
-|-------|------|
-| `LinearRegression` | Baseline — interpretable, simple |
-| `RandomForestRegressor` | Main model — handles nonlinear patterns |
+### Canonical Endpoint: `POST /predict`
 
-Models are evaluated using **chronological 80/20 split** (oldest 80% → train, newest 20% → test). **Random shuffling is not used** — price prediction is time-dependent.
-
-### Evaluation Metrics
-
-- **MAE** — Mean Absolute Error (primary selection criterion)
-- **RMSE** — Root Mean Squared Error
-- **R²** — Coefficient of determination
-
-The model with lower MAE on the held-out test set is automatically selected.
-
-### Output
-
+Request:
 ```json
 {
-  "status": "SUCCESS",
-  "current_price": 58999.0,
-  "predicted_price_7d": 56500.0,
-  "predicted_change": -2499.0,
-  "predicted_change_percent": -4.24,
-  "recommendation": "WAIT",
-  "recommendation_reason": "Model estimates the price may decrease by 4.2% over the next 7 days.",
-  "confidence_label": "Medium",
-  "predicted_price_low": 54900.0,
-  "predicted_price_high": 58300.0,
-  "deal_quality": "GOOD_DEAL",
-  "model_name": "RandomForestRegressor",
-  "model_version": "1.0",
-  "data_points_used": 45
+  "product_id": 123,
+  "price_points": [
+    { "date": "2026-09-01", "price": 54000.0, "merchant": "Amazon" },
+    ...
+  ]
 }
 ```
 
-> **Important**: Predicted prices are **estimates** based on historical patterns, not guaranteed future prices.
+Response:
+```json
+{
+  "status": "SUCCESS",
+  "product_id": 123,
+  "current_price": 54200.0,
+  "predicted_price": 53650.0,
+  "predicted_change": -550.0,
+  "predicted_change_percent": -1.01,
+  "recommendation": "HOLD",
+  "recommendation_reason": "The predicted price is relatively close to the current price, so no significant price movement is expected by the next day.",
+  "model_name": "Review 2 Price Prediction Model",
+  "model_version": "1.0",
+  "data_points_used": 24,
+  "message": null
+}
+```
 
-### Confidence / Uncertainty
-
-For Random Forest: individual tree predictions are collected and their standard deviation (σ) is used to estimate the prediction interval:
-- `predicted_price_low = mean − 1.5σ`
-- `predicted_price_high = mean + 1.5σ`
-- Confidence: σ/mean < 3% → **High**, 3–8% → **Medium**, >8% → **Low**
-
-For Linear Regression: the training MAE is used as the uncertainty proxy.
-
-### Deal Quality Classification
-
-Deal quality is **statistical rule-based classification** (not ML):
-- `GOOD_DEAL`: current price < 93% of 30-day average AND ≤ 105% of 30-day minimum
-- `EXPENSIVE`: current price > 107% of 30-day average
-- `NORMAL_PRICE`: everything else
+> **Note**: An auxiliary endpoint `POST /predict-price` is retained solely for legacy backwards compatibility. The canonical endpoint `POST /predict` exposes only the clean next-day contract.
 
 ### Recommendation Engine
 

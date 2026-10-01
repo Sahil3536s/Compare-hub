@@ -44,6 +44,17 @@ public class ProductPriceHistory {
     @Builder.Default
     private String currency = "INR";
 
+    @Column(name = "data_source", length = 30)
+    @Builder.Default
+    private String dataSource = "LIVE";
+
+    @Column(name = "is_live")
+    @Builder.Default
+    private Boolean isLive = true;
+
+    @Column(name = "provenance", length = 50)
+    private String provenance;
+
     @Column(name = "recorded_at", nullable = false, updatable = false)
     @Builder.Default
     private Instant recordedAt = Instant.now();

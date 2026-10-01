@@ -203,13 +203,13 @@ class PricePredictionServiceTest {
     }
 
     @Test
-    void shouldFilterOutMockMerchantsFromHistory() {
+    void shouldFilterOutDemoAndUnverifiedProvenanceFromHistory() {
         when(productRepository.findById(1L)).thenReturn(Optional.of(testProduct));
 
         List<ProductPriceHistory> mixedHistory = new ArrayList<>();
         Instant base = Instant.now().minus(30, ChronoUnit.DAYS);
 
-        // 15 genuine points
+        // 15 verified genuine live points
         for (int i = 0; i < 15; i++) {
             mixedHistory.add(ProductPriceHistory.builder()
                     .id((long) i)
@@ -217,17 +217,23 @@ class PricePredictionServiceTest {
                     .merchant("Amazon")
                     .price(new BigDecimal("50000.00"))
                     .currency("INR")
+                    .dataSource("LIVE")
+                    .isLive(true)
+                    .provenance("VERIFIED_LIVE")
                     .recordedAt(base.plus(i, ChronoUnit.DAYS))
                     .build());
         }
-        // 10 mock points
+        // 10 demo/mock points with DEMO provenance
         for (int i = 15; i < 25; i++) {
             mixedHistory.add(ProductPriceHistory.builder()
                     .id((long) i)
                     .product(testProduct)
-                    .merchant("Amazon Mock")
+                    .merchant("Demo Merchant")
                     .price(new BigDecimal("50000.00"))
                     .currency("INR")
+                    .dataSource("DEMO")
+                    .isLive(false)
+                    .provenance("DEMO_DATA")
                     .recordedAt(base.plus(i, ChronoUnit.DAYS))
                     .build());
         }
@@ -239,6 +245,38 @@ class PricePredictionServiceTest {
 
         assertEquals("INSUFFICIENT_DATA", result.getStatus());
         assertEquals(15, result.getDataPointsUsed());
+        verifyNoInteractions(mlServiceClient);
+    }
+
+    @Test
+    void shouldFailSafelyForUnknownProvenance() {
+        when(productRepository.findById(1L)).thenReturn(Optional.of(testProduct));
+
+        List<ProductPriceHistory> unknownHistory = new ArrayList<>();
+        Instant base = Instant.now().minus(30, ChronoUnit.DAYS);
+
+        // 25 points with UNKNOWN / missing structured provenance
+        for (int i = 0; i < 25; i++) {
+            unknownHistory.add(ProductPriceHistory.builder()
+                    .id((long) i)
+                    .product(testProduct)
+                    .merchant("Unknown Vendor")
+                    .price(new BigDecimal("50000.00"))
+                    .currency("INR")
+                    .dataSource("UNKNOWN")
+                    .isLive(false)
+                    .provenance("UNVERIFIED")
+                    .recordedAt(base.plus(i, ChronoUnit.DAYS))
+                    .build());
+        }
+
+        when(priceHistoryRepository.findByProductIdOrderByRecordedAtAsc(1L)).thenReturn(unknownHistory);
+
+        // Unknown provenance must fail safely and be rejected
+        PricePredictionResponseDto result = service.getPricePrediction(1L);
+
+        assertEquals("INSUFFICIENT_DATA", result.getStatus());
+        assertEquals(0, result.getDataPointsUsed());
         verifyNoInteractions(mlServiceClient);
     }
 
@@ -302,6 +340,9 @@ class PricePredictionServiceTest {
                     .merchant("Amazon")
                     .price(new BigDecimal("58999.00"))
                     .currency("INR")
+                    .dataSource("LIVE")
+                    .isLive(true)
+                    .provenance("VERIFIED_LIVE")
                     .recordedAt(base.plus(i, ChronoUnit.DAYS))
                     .build());
         }

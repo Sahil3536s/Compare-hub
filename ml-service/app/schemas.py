@@ -55,6 +55,15 @@ class PredictionResponse(BaseModel):
     message: Optional[str] = None
 
 
+class LegacyPredictionResponse(PredictionResponse):
+    """Isolated legacy response schema for /predict-price backwards compatibility."""
+    predicted_price_7d: Optional[float] = None
+    confidence_label: Optional[str] = None
+    predicted_price_low: Optional[float] = None
+    predicted_price_high: Optional[float] = None
+    deal_quality: Optional[str] = None
+
+
 class HealthResponse(BaseModel):
     model_config = {"protected_namespaces": ()}
 

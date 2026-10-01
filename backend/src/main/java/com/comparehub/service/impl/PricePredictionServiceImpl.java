@@ -48,16 +48,11 @@ public class PricePredictionServiceImpl implements com.comparehub.service.PriceP
         List<ProductPriceHistory> history = priceHistoryRepository
                 .findByProductIdOrderByRecordedAtAsc(productId);
 
-        // 2a. Exclude mock/demo merchants from history
+        // 2a. Filter for genuine history based strictly on structured provenance:
+        //     Must have verified live status (isLive == true) and genuine data source (dataSource == "LIVE").
+        //     Fails safely for unknown, unverified, or demo provenance.
         List<ProductPriceHistory> genuineHistory = history.stream()
-                .filter(h -> {
-                    String merchant = h.getMerchant().toLowerCase();
-                    return !(merchant.contains("amazon mock")
-                            || merchant.contains("flipkart mock")
-                            || merchant.contains("croma mock")
-                            || merchant.contains("dummyjson")
-                            || merchant.contains("openproductdata"));
-                })
+                .filter(this::isGenuineHistoryPoint)
                 .toList();
 
         // 3. Check minimum data requirement BEFORE calling ML service
@@ -136,6 +131,35 @@ public class PricePredictionServiceImpl implements com.comparehub.service.PriceP
 
         // 8. Map ML response to frontend DTO
         return mapToResponseDto(mlResponse, productId, product.getName());
+    }
+
+    /**
+     * Determines whether a price observation possesses verified structured provenance
+     * required for ML price prediction.
+     *
+     * Rules:
+     * - Uses structured metadata: requires isLive == true AND dataSource == "LIVE".
+     * - Does NOT rely on merchant-name substring matching.
+     * - Fails safely for unknown, unverified, or demo provenance.
+     */
+    private boolean isGenuineHistoryPoint(ProductPriceHistory h) {
+        if (h == null || h.getPrice() == null || h.getPrice().compareTo(BigDecimal.ZERO) <= 0) {
+            return false;
+        }
+
+        // 1. Structured isLive verification: must be explicitly true
+        Boolean isLive = h.getIsLive();
+        if (isLive == null || !isLive) {
+            return false; // Fail safely: unknown or non-live observations rejected
+        }
+
+        // 2. Structured dataSource verification: must be explicitly "LIVE"
+        String dataSource = h.getDataSource();
+        if (dataSource == null || !"LIVE".equalsIgnoreCase(dataSource.trim())) {
+            return false; // Fail safely: unknown or non-live data sources rejected
+        }
+
+        return true;
     }
 
     private boolean isValidMLResponse(MLServiceResponseDto ml) {
