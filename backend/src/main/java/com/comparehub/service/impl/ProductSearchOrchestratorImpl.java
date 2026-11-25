@@ -296,6 +296,13 @@ public class ProductSearchOrchestratorImpl implements ProductSearchOrchestrator 
                 .filter(group -> !group.getOffers().isEmpty())
                 .collect(Collectors.toList());
 
+        Map<String, String> marketplaceSearchLinks = new LinkedHashMap<>();
+        if (!rawQuery.isBlank()) {
+            String encodedQuery = java.net.URLEncoder.encode(rawQuery, java.nio.charset.StandardCharsets.UTF_8);
+            marketplaceSearchLinks.put("Amazon", "https://www.amazon.in/s?k=" + encodedQuery);
+            marketplaceSearchLinks.put("Flipkart", "https://www.flipkart.com/search?q=" + encodedQuery);
+        }
+
         return ProductComparisonResponseDto.builder()
                 .query(rawQuery)
                 .totalOffers(totalOffers)
@@ -320,6 +327,7 @@ public class ProductSearchOrchestratorImpl implements ProductSearchOrchestrator 
                 .availableCategories(availableCategories)
                 .availableBrands(availableBrands)
                 .availableMerchants(availableMerchants)
+                .marketplaceSearchLinks(marketplaceSearchLinks)
                 .build();
     }
 
