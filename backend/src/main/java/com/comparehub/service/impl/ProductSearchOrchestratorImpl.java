@@ -2,6 +2,11 @@ package com.comparehub.service.impl;
 
 import com.comparehub.dto.*;
 import com.comparehub.provider.ProductProvider;
+import com.comparehub.provider.impl.AmazonProductProvider;
+import com.comparehub.provider.impl.CromaProductProvider;
+import com.comparehub.provider.impl.FlipkartProductProvider;
+import com.comparehub.provider.impl.MercadoLibreProductProvider;
+import com.comparehub.provider.impl.OpenProductDataProvider;
 import com.comparehub.service.*;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
