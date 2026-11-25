@@ -334,10 +334,10 @@ public class ProductSearchOrchestratorImpl implements ProductSearchOrchestrator 
 
     private String resolveProviderMode(ProductProvider provider) {
         if (provider instanceof AmazonProductProvider amazon) {
-            return amazon.isLiveMode() ? "LIVE_API" : "MOCK_CATALOG";
+            return "UNAVAILABLE_NO_AUTHORIZED_API";
         }
         if (provider instanceof FlipkartProductProvider flipkart) {
-            return flipkart.isLiveMode() ? "LIVE_API" : "MOCK_CATALOG";
+            return "UNAVAILABLE_NO_AUTHORIZED_API";
         }
         if (provider instanceof CromaProductProvider) {
             return "MOCK_CATALOG";
