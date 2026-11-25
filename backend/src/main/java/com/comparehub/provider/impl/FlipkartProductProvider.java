@@ -137,6 +137,49 @@ public class FlipkartProductProvider implements ProductProvider {
     }
 
     public List<NormalizedProductOfferDto> fallbackSearch(String query, int page, int pageSize, Throwable throwable) {
+        log.warn("Flipkart provider failed; refusing to return stale mock prices: {}", throwable.getMessage());
+        return List.of();
+    }
+
+    private List<NormalizedProductOfferDto> queryMockCatalog(String query, int page, int pageSize) {
+        List<NormalizedProductOfferDto> pool = (query == null || query.isBlank())
+                ? new ArrayList<>(MOCK_CATALOG)
+                : MOCK_CATALOG.stream()
+                        .filter(p -> p.getProductName().toLowerCase().contains(query.trim().toLowerCase())
+                                || p.getBrand().toLowerCase().contains(query.trim().toLowerCase())
+                                || p.getCategory().toLowerCase().contains(query.trim().toLowerCase()))
+                        .collect(Collectors.toList());
+
+        int limit = Math.max(1, pageSize);
+        int skip = Math.max(0, (page - 1) * limit);
+
+        return pool.stream()
+                .skip(skip)
+                .limit(limit)
+                .map(this::enrichWithAttributes)
+                .collect(Collectors.toList());
+    }
+
+    private NormalizedProductOfferDto enrichWithAttributes(NormalizedProductOfferDto offer) {
+        if (offer.getAttributes() == null || offer.getAttributes().isEmpty()) {
+            java.util.Map<String, String> attrs = new java.util.LinkedHashMap<>();
+            if (offer.getBrand() != null) attrs.put("Brand", offer.getBrand());
+            if (offer.getCategory() != null) attrs.put("Category", offer.getCategory());
+            offer.setAttributes(attrs);
+        }
+        return offer;
+    }
+}        // Do not present hardcoded catalogue entries as current marketplace offers.
+        // Real marketplace API integration requires authorized credentials and implementation.
+        log.warn("Flipkart live product search is unavailable: authorized API integration is not configured.");
+        return List.of();
+    }
+
+    public List<NormalizedProductOfferDto> fallbackSearch(String query, Throwable throwable) {
+        return fallbackSearch(query, 1, 20, throwable);
+    }
+
+    public List<NormalizedProductOfferDto> fallbackSearch(String query, int page, int pageSize, Throwable throwable) {
         log.warn("Circuit Breaker triggered for Flipkart provider: {}. Using fallback mock catalog.", throwable.getMessage());
         return queryMockCatalog(query, page, pageSize);
     }
