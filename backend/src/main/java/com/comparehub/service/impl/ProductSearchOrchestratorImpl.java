@@ -2,6 +2,11 @@ package com.comparehub.service.impl;
 
 import com.comparehub.dto.*;
 import com.comparehub.provider.ProductProvider;
+import com.comparehub.provider.impl.AmazonProductProvider;
+import com.comparehub.provider.impl.CromaProductProvider;
+import com.comparehub.provider.impl.FlipkartProductProvider;
+import com.comparehub.provider.impl.MercadoLibreProductProvider;
+import com.comparehub.provider.impl.OpenProductDataProvider;
 import com.comparehub.service.*;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -101,22 +106,35 @@ public class ProductSearchOrchestratorImpl implements ProductSearchOrchestrator 
 
         List<String> failedProviders = new CopyOnWriteArrayList<>();
         List<String> successfulProviders = new CopyOnWriteArrayList<>();
+        Map<String, ProviderLog> providerDiagnostics = new ConcurrentHashMap<>();
 
         // 1. Concurrently call every enabled product provider with resilience
         List<CompletableFuture<List<NormalizedProductOfferDto>>> futures = providers.stream()
                 .map(provider -> CompletableFuture.supplyAsync(() -> {
                     try {
                         List<NormalizedProductOfferDto> results = provider.searchProducts(rawQuery, page, pageSize);
-                        if (results != null) {
-                            successfulProviders.add(provider.getProviderName());
-                            return results;
-                        }
+                        int resultCount = results == null ? 0 : results.size();
                         successfulProviders.add(provider.getProviderName());
-                        return List.<NormalizedProductOfferDto>of();
+                        providerDiagnostics.put(provider.getProviderName(), ProviderLog.builder()
+                                .providerName(provider.getProviderName())
+                                .providerMode(resolveProviderMode(provider))
+                                .status(resultCount > 0 ? "SUCCESS_WITH_RESULTS" : "SUCCESS_EMPTY")
+                                .rawResultCount(resultCount)
+                                .normalizedResultCount(0)
+                                .acceptedResultCount(0)
+                                .failureReason(resultCount == 0 ? "Provider returned no offers for this query." : null)
+                                .build());
+                        return results == null ? List.<NormalizedProductOfferDto>of() : results;
                     } catch (Exception e) {
                         log.error("Provider '{}' failed during search: {}. Continuing with remaining providers.",
                                 provider.getProviderName(), e.getMessage());
                         failedProviders.add(provider.getProviderName());
+                        providerDiagnostics.put(provider.getProviderName(), ProviderLog.builder()
+                                .providerName(provider.getProviderName())
+                                .providerMode(resolveProviderMode(provider))
+                                .status("FAILED")
+                                .failureReason(e.getMessage())
+                                .build());
                         return List.<NormalizedProductOfferDto>of();
                     }
                 }, providerExecutor)
@@ -124,6 +142,12 @@ public class ProductSearchOrchestratorImpl implements ProductSearchOrchestrator 
                 .exceptionally(ex -> {
                     log.warn("Provider '{}' timed out or failed: {}", provider.getProviderName(), ex.getMessage());
                     failedProviders.add(provider.getProviderName());
+                    providerDiagnostics.put(provider.getProviderName(), ProviderLog.builder()
+                            .providerName(provider.getProviderName())
+                            .providerMode(resolveProviderMode(provider))
+                            .status("TIMEOUT_OR_FAILED")
+                            .failureReason(ex.getMessage())
+                            .build());
                     return List.of();
                 }))
                 .toList();
@@ -135,6 +159,13 @@ public class ProductSearchOrchestratorImpl implements ProductSearchOrchestrator 
 
         // 2. Data Normalization
         List<NormalizedProductOfferDto> normalized = normalizationService.normalizeOffers(rawOffers);
+        for (ProviderLog diagnostic : providerDiagnostics.values()) {
+            long normalizedCount = normalized.stream()
+                    .filter(offer -> diagnostic.getProviderName().equalsIgnoreCase(offer.getProvider()))
+                    .count();
+            diagnostic.setNormalizedResultCount((int) normalizedCount);
+            diagnostic.setAcceptedResultCount((int) normalizedCount);
+        }
 
         // 3. Generic Relevance Engine & Generic Accessory Downranking
         for (NormalizedProductOfferDto offer : normalized) {
@@ -265,6 +296,13 @@ public class ProductSearchOrchestratorImpl implements ProductSearchOrchestrator 
                 .filter(group -> !group.getOffers().isEmpty())
                 .collect(Collectors.toList());
 
+        Map<String, String> marketplaceSearchLinks = new LinkedHashMap<>();
+        if (!rawQuery.isBlank()) {
+            String encodedQuery = java.net.URLEncoder.encode(rawQuery, java.nio.charset.StandardCharsets.UTF_8);
+            marketplaceSearchLinks.put("Amazon", "https://www.amazon.in/s?k=" + encodedQuery);
+            marketplaceSearchLinks.put("Flipkart", "https://www.flipkart.com/search?q=" + encodedQuery);
+        }
+
         return ProductComparisonResponseDto.builder()
                 .query(rawQuery)
                 .totalOffers(totalOffers)
@@ -278,7 +316,9 @@ public class ProductSearchOrchestratorImpl implements ProductSearchOrchestrator 
                 .statusMessage(statusMessage)
                 .successfulProviders(new ArrayList<>(successfulProviders))
                 .failedProviders(new ArrayList<>(failedProviders))
-                .providerDiagnostics(new ArrayList<>())
+                .providerDiagnostics(providerDiagnostics.values().stream()
+                        .sorted(Comparator.comparing(ProviderLog::getProviderName))
+                        .collect(Collectors.toList()))
                 .page(page)
                 .pageSize(pageSize)
                 .totalPages(totalPages)
@@ -287,7 +327,28 @@ public class ProductSearchOrchestratorImpl implements ProductSearchOrchestrator 
                 .availableCategories(availableCategories)
                 .availableBrands(availableBrands)
                 .availableMerchants(availableMerchants)
+                .marketplaceSearchLinks(marketplaceSearchLinks)
                 .build();
+    }
+
+
+    private String resolveProviderMode(ProductProvider provider) {
+        if (provider instanceof AmazonProductProvider amazon) {
+            return "UNAVAILABLE_NO_AUTHORIZED_API";
+        }
+        if (provider instanceof FlipkartProductProvider flipkart) {
+            return "UNAVAILABLE_NO_AUTHORIZED_API";
+        }
+        if (provider instanceof CromaProductProvider) {
+            return "MOCK_CATALOG";
+        }
+        if (provider instanceof OpenProductDataProvider) {
+            return "EXTERNAL_API_WITH_FALLBACK";
+        }
+        if (provider instanceof MercadoLibreProductProvider) {
+            return "EXTERNAL_API_WITH_FALLBACK";
+        }
+        return "PROVIDER_DEFINED";
     }
 
     @Override

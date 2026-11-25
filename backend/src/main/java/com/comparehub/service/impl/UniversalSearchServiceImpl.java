@@ -114,9 +114,21 @@ public class UniversalSearchServiceImpl implements UniversalSearchService {
                                    Long userId) {
         FlightQueryEntitiesDto flight = nlu.getFlightEntities();
 
-        String origin = flight != null && flight.getOrigin() != null ? flight.getOrigin() : intentDetails.getFlightParams().getOrDefault("origin", "DEL");
-        String destination = flight != null && flight.getDestination() != null ? flight.getDestination() : intentDetails.getFlightParams().getOrDefault("destination", "BLR");
-        String departureDate = flight != null && flight.getDepartureDate() != null ? flight.getDepartureDate() : intentDetails.getFlightParams().getOrDefault("departureDate", "2026-09-10");
+        String origin = flight != null && flight.getOrigin() != null && !flight.getOrigin().isBlank()
+                ? flight.getOrigin() : intentDetails.getFlightParams().get("origin");
+        String destination = flight != null && flight.getDestination() != null && !flight.getDestination().isBlank()
+                ? flight.getDestination() : intentDetails.getFlightParams().get("destination");
+        String departureDate = flight != null && flight.getDepartureDate() != null && !flight.getDepartureDate().isBlank()
+                ? flight.getDepartureDate() : intentDetails.getFlightParams().get("departureDate");
+        java.util.List<String> missing = new java.util.ArrayList<>();
+        if (origin == null || origin.isBlank()) missing.add("origin");
+        if (destination == null || destination.isBlank()) missing.add("destination");
+        if (departureDate == null || departureDate.isBlank()) missing.add("departureDate");
+        if (!missing.isEmpty()) {
+            responseBuilder.requiresClarification(true).missingFields(missing)
+                    .clarificationPrompt("Please provide " + String.join(", ", missing) + " to compare flights.");
+            return;
+        }
         String sortBy = flight != null && flight.getSortPreference() != null ? flight.getSortPreference().toLowerCase() : "best";
 
         FlightSearchRequestDto flightRequest = FlightSearchRequestDto.builder()
@@ -144,8 +156,18 @@ public class UniversalSearchServiceImpl implements UniversalSearchService {
                                  Long userId) {
         RideQueryEntitiesDto ride = nlu.getRideEntities();
 
-        String pickupStr = ride != null && ride.getPickup() != null ? ride.getPickup() : intentDetails.getRideParams().getOrDefault("pickup", "Connaught Place, New Delhi");
-        String destinationStr = ride != null && ride.getDestination() != null ? ride.getDestination() : intentDetails.getRideParams().getOrDefault("destination", "Indira Gandhi Airport, New Delhi");
+        String pickupStr = ride != null && ride.getPickup() != null && !ride.getPickup().isBlank()
+                ? ride.getPickup() : intentDetails.getRideParams().get("pickup");
+        String destinationStr = ride != null && ride.getDestination() != null && !ride.getDestination().isBlank()
+                ? ride.getDestination() : intentDetails.getRideParams().get("destination");
+        java.util.List<String> missing = new java.util.ArrayList<>();
+        if (pickupStr == null || pickupStr.isBlank()) missing.add("pickup");
+        if (destinationStr == null || destinationStr.isBlank()) missing.add("destination");
+        if (!missing.isEmpty()) {
+            responseBuilder.requiresClarification(true).missingFields(missing)
+                    .clarificationPrompt("Please provide " + String.join(" and ", missing) + " locations to compare rides.");
+            return;
+        }
         String rideType = ride != null && ride.getRideType() != null ? ride.getRideType() : "all";
         String sortBy = ride != null && ride.getSortPreference() != null ? ride.getSortPreference().toLowerCase() : "best";
 
@@ -154,24 +176,18 @@ public class UniversalSearchServiceImpl implements UniversalSearchService {
 
         try {
             pickupLoc = locationService.geocodeAddress(pickupStr);
-        } catch (Exception e) {
-            pickupLoc = LocationDto.builder()
-                    .address(pickupStr)
-                    .city("New Delhi")
-                    .latitude(28.6315)
-                    .longitude(77.2167)
-                    .build();
-        }
-
-        try {
             destLoc = locationService.geocodeAddress(destinationStr);
+            if (pickupLoc == null || destLoc == null
+                    || pickupLoc.getLatitude() == null || pickupLoc.getLongitude() == null
+                    || destLoc.getLatitude() == null || destLoc.getLongitude() == null) {
+                throw new IllegalStateException("Geocoding did not return coordinates for both locations");
+            }
         } catch (Exception e) {
-            destLoc = LocationDto.builder()
-                    .address(destinationStr)
-                    .city("New Delhi")
-                    .latitude(28.5562)
-                    .longitude(77.1000)
-                    .build();
+            log.warn("Ride search requires valid geocoded locations: {}", e.getMessage());
+            responseBuilder.requiresClarification(true)
+                    .missingFields(java.util.List.of("valid pickup and destination locations"))
+                    .clarificationPrompt("I couldn't verify both locations. Please check the pickup and destination names.");
+            return;
         }
 
         RideCompareRequestDto rideRequest = RideCompareRequestDto.builder()

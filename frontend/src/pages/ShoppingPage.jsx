@@ -74,6 +74,7 @@ export const ShoppingPage = () => {
   const [aiRecommendation, setAiRecommendation] = useState(null);
   const [rankingSummary, setRankingSummary] = useState(null);
   const [failedProviders, setFailedProviders] = useState([]);
+  const [marketplaceSearchLinks, setMarketplaceSearchLinks] = useState({});
   const [successfulProviders, setSuccessfulProviders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -213,6 +214,7 @@ export const ShoppingPage = () => {
         setAvailableMerchants(data.availableMerchants || []);
         setDynamicFilters(data.dynamicFilters || {});
         setSuccessfulProviders(data.successfulProviders || []);
+        setMarketplaceSearchLinks(data.marketplaceSearchLinks || {});
       }
 
       setTotalOffers(data.totalOffers != null ? data.totalOffers : (data.offers ? data.offers.length : 0));
@@ -622,16 +624,35 @@ export const ShoppingPage = () => {
 
           {/* Product Feed */}
           {loading ? (
-            <LoadingSkeleton type="product-card" count={6} />
+              <LoadingSkeleton type="product-card" count={6} />
           ) : error ? (
-            <ErrorState title="Shopping Engine Error" message={error} onRetry={fetchOffers} />
+              <ErrorState
+                  title="Shopping Engine Error"
+                  message={error}
+                  onRetry={fetchOffers}
+              />
           ) : (viewMode === 'canonical' && canonicalProducts.length > 0 ? canonicalProducts.length : offers.length) === 0 ? (
-            <EmptyState
-              title={query ? `No products found for '${query}'` : 'No Products Found'}
-              description="We couldn't find matching products from the currently connected providers."
-              actionText="Search Again"
-              onAction={resetFilters}
-            />
+              <>
+                <EmptyState
+                    title={query ? `No products found for '${query}'` : 'No Products Found'}
+                    description="We couldn't find matching products from the currently connected providers."
+                    actionText="Search Again"
+                    onAction={resetFilters}
+                />
+                {query.trim() && Object.keys(marketplaceSearchLinks).length > 0 && (
+                    <section className="mt-4 rounded-2xl border border-indigo-100 bg-indigo-50/70 p-5" aria-label="Search marketplaces directly">
+                      <h3 className="text-sm font-bold text-slate-900">Search this product on marketplaces</h3>
+                      <p className="mt-1 text-xs text-slate-600">No verified offers are available in CompareHub right now. Open a store to check its current listings and prices.</p>
+                      <div className="mt-3 flex flex-wrap gap-3">
+                        {Object.entries(marketplaceSearchLinks).map(([store, url]) => (
+                            <a key={store} href={url} target="_blank" rel="noopener noreferrer" className="rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-indigo-700 border border-indigo-200 hover:bg-indigo-100">
+                              Search {store} ↗
+                            </a>
+                        ))}
+                      </div>
+                    </section>
+                )}
+              </>
           ) : viewMode === 'canonical' && canonicalProducts.length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5 sm:gap-6">
               {canonicalProducts.map((product, idx) => (

@@ -67,4 +67,8 @@ private Integer page = 0;
 
     @Builder.Default
     private List<String> availableMerchants = new ArrayList<>();
+
+    // Direct marketplace search links are fallbacks, not verified offers.
+    @Builder.Default
+    private java.util.Map<String, String> marketplaceSearchLinks = new java.util.LinkedHashMap<>();
 }
