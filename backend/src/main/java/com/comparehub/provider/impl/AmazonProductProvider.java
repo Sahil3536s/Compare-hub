@@ -139,14 +139,10 @@ public class AmazonProductProvider implements ProductProvider {
             return new ArrayList<>();
         }
 
-        // When live API key is configured, invoke Amazon Affiliate API
-        if (isLiveMode()) {
-            log.info("Querying live Amazon Affiliate API at {}", apiUrl);
-            // Real API integration logic with authentication headers
-        }
-
-        // Fallback / standard development catalog matching
-        return queryMockCatalog(query, page, pageSize);
+        // Do not present hardcoded catalogue entries as current marketplace offers.
+        // Real marketplace API integration requires authorized credentials and implementation.
+        log.warn("Amazon live product search is unavailable: authorized API integration is not configured.");
+        return List.of();
     }
 
     public List<NormalizedProductOfferDto> fallbackSearch(String query, Throwable throwable) {
@@ -154,8 +150,8 @@ public class AmazonProductProvider implements ProductProvider {
     }
 
     public List<NormalizedProductOfferDto> fallbackSearch(String query, int page, int pageSize, Throwable throwable) {
-        log.warn("Circuit Breaker triggered for Amazon provider: {}. Using fallback mock catalog.", throwable.getMessage());
-        return queryMockCatalog(query, page, pageSize);
+        log.warn("Amazon provider failed; refusing to return stale mock prices: {}", throwable.getMessage());
+        return List.of();
     }
 
     private List<NormalizedProductOfferDto> queryMockCatalog(String query, int page, int pageSize) {
