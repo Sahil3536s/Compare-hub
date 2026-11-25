@@ -125,11 +125,10 @@ public class FlipkartProductProvider implements ProductProvider {
             return new ArrayList<>();
         }
 
-        if (isLiveMode()) {
-            log.info("Querying live Flipkart Affiliate API at {}", apiUrl);
-        }
-
-        return queryMockCatalog(query, page, pageSize);
+        // Do not present hardcoded catalogue entries as current marketplace offers.
+        // Real marketplace API integration requires authorized credentials and implementation.
+        log.warn("Flipkart live product search is unavailable: authorized API integration is not configured.");
+        return List.of();
     }
 
     public List<NormalizedProductOfferDto> fallbackSearch(String query, Throwable throwable) {
