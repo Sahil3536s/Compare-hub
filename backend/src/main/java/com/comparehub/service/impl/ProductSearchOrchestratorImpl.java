@@ -1,3 +1,4 @@
+
 package com.comparehub.service.impl;
 
 import com.comparehub.dto.*;
@@ -17,8 +18,6 @@ import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -34,14 +33,15 @@ public class ProductSearchOrchestratorImpl implements ProductSearchOrchestrator 
     private final Executor providerExecutor;
 
     private static final Set<String> STOP_WORDS = Set.of(
-            "a", "an", "the", "and", "or", "in", "on", "at", "for", "with", "to", "by", "of", "from", "is", "under"
-    );
+            "a", "an", "the", "and", "or", "in", "on", "at",
+            "for", "with", "to", "by", "of", "from", "is", "under");
 
     private static final List<String> ACCESSORY_INDICATORS = List.of(
-            "case", "cover", "protector", "screen protector", "sleeve", "skin", "strap",
-            "band", "charger", "cable", "adapter", "holder", "stand", "mount", "stylus",
-            "tempered glass", "pouch", "bag for", "casing", "lens protector", "cable cord", "ear tips"
-    );
+            "case", "cover", "protector", "screen protector", "sleeve",
+            "skin", "strap", "band", "charger", "cable", "adapter",
+            "holder", "stand", "mount", "stylus", "tempered glass",
+            "pouch", "bag for", "casing", "lens protector",
+            "cable cord", "ear tips");
 
     @Autowired
     public ProductSearchOrchestratorImpl(
@@ -52,6 +52,7 @@ public class ProductSearchOrchestratorImpl implements ProductSearchOrchestrator 
             ComparisonRecommendationService recommendationService,
             ProductPersistenceService productPersistenceService,
             @Qualifier("providerExecutor") Executor providerExecutor) {
+
         this.providers = providers;
         this.productMatchingService = productMatchingService;
         this.normalizationService = normalizationService;
@@ -68,7 +69,15 @@ public class ProductSearchOrchestratorImpl implements ProductSearchOrchestrator 
             ProductRankingService rankingService,
             ComparisonRecommendationService recommendationService,
             ProductPersistenceService productPersistenceService) {
-        this(providers, productMatchingService, normalizationService, rankingService, recommendationService, productPersistenceService, ForkJoinPool.commonPool());
+
+        this(
+                providers,
+                productMatchingService,
+                normalizationService,
+                rankingService,
+                recommendationService,
+                productPersistenceService,
+                ForkJoinPool.commonPool());
     }
 
     public ProductSearchOrchestratorImpl(
@@ -78,7 +87,15 @@ public class ProductSearchOrchestratorImpl implements ProductSearchOrchestrator 
             ProductRankingService rankingService,
             ComparisonRecommendationService recommendationService,
             @Qualifier("providerExecutor") Executor providerExecutor) {
-        this(providers, productMatchingService, normalizationService, rankingService, recommendationService, null, providerExecutor);
+
+        this(
+                providers,
+                productMatchingService,
+                normalizationService,
+                rankingService,
+                recommendationService,
+                null,
+                providerExecutor);
     }
 
     public ProductSearchOrchestratorImpl(
@@ -87,109 +104,194 @@ public class ProductSearchOrchestratorImpl implements ProductSearchOrchestrator 
             ProductNormalizationService normalizationService,
             ProductRankingService rankingService,
             ComparisonRecommendationService recommendationService) {
-        this(providers, productMatchingService, normalizationService, rankingService, recommendationService, null, ForkJoinPool.commonPool());
+
+        this(
+                providers,
+                productMatchingService,
+                normalizationService,
+                rankingService,
+                recommendationService,
+                null,
+                ForkJoinPool.commonPool());
     }
 
     @Override
-    @Cacheable(
-            value = "product-comparisons",
-            key = "'search:' + T(java.lang.String).valueOf(#request.query).toLowerCase().trim() + ':' + #request.page + ':' + #request.pageSize + ':' + #request.merchant + ':' + #request.brand + ':' + #request.category + ':' + #request.minPrice + ':' + #request.maxPrice + ':' + #request.inStockOnly + ':' + #request.sortBy + ':' + #request.minRating + ':' + #request.delivery + ':' + #request.ram + ':' + #request.storage + ':' + #request.attributeFilters.toString()",
-            unless = "#result == null || #result.offers.isEmpty()"
-    )
+    @Cacheable(value = "product-comparisons", key = "'search:' + T(java.lang.String).valueOf(#request.query).toLowerCase().trim() + ':' + #request.page + ':' + #request.pageSize + ':' + #request.merchant + ':' + #request.brand + ':' + #request.category + ':' + #request.minPrice + ':' + #request.maxPrice + ':' + #request.inStockOnly + ':' + #request.sortBy + ':' + #request.minRating + ':' + #request.delivery + ':' + #request.ram + ':' + #request.storage + ':' + #request.attributeFilters.toString()", unless = "#result == null || #result.offers.isEmpty()")
     public ProductComparisonResponseDto search(ProductSearchRequestDto request) {
-        String rawQuery = request.getQuery() != null ? request.getQuery().trim() : "";
-        int page = request.getPage() != null && request.getPage() > 0 ? request.getPage() : 1;
-        int pageSize = request.getPageSize() != null && request.getPageSize() > 0 ? Math.min(request.getPageSize(), 100) : 20;
 
-        log.info("ProductSearchOrchestrator executing search for query: '{}', page: {}, pageSize: {}, providers: {}",
+        String rawQuery = request.getQuery() != null
+                ? request.getQuery().trim()
+                : "";
+
+        int page = request.getPage() != null && request.getPage() > 0
+                ? request.getPage()
+                : 1;
+
+        int pageSize = request.getPageSize() != null && request.getPageSize() > 0
+                ? Math.min(request.getPageSize(), 100)
+                : 20;
+
+        log.info(
+                "ProductSearchOrchestrator executing search for query: '{}', page: {}, pageSize: {}, providers: {}",
                 rawQuery, page, pageSize, providers.size());
 
         List<String> failedProviders = new CopyOnWriteArrayList<>();
         List<String> successfulProviders = new CopyOnWriteArrayList<>();
+
         Map<String, ProviderLog> providerDiagnostics = new ConcurrentHashMap<>();
 
-        // 1. Concurrently call every enabled product provider with resilience
+        // 1. Execute providers concurrently.
         List<CompletableFuture<List<NormalizedProductOfferDto>>> futures = providers.stream()
-                .map(provider -> CompletableFuture.supplyAsync(() -> {
-                    try {
-                        List<NormalizedProductOfferDto> results = provider.searchProducts(rawQuery, page, pageSize);
-                        int resultCount = results == null ? 0 : results.size();
-                        successfulProviders.add(provider.getProviderName());
-                        providerDiagnostics.put(provider.getProviderName(), ProviderLog.builder()
-                                .providerName(provider.getProviderName())
-                                .providerMode(resolveProviderMode(provider))
-                                .status(resultCount > 0 ? "SUCCESS_WITH_RESULTS" : "SUCCESS_EMPTY")
-                                .rawResultCount(resultCount)
-                                .normalizedResultCount(0)
-                                .acceptedResultCount(0)
-                                .failureReason(resultCount == 0 ? "Provider returned no offers for this query." : null)
-                                .build());
-                        return results == null ? List.<NormalizedProductOfferDto>of() : results;
-                    } catch (Exception e) {
-                        log.error("Provider '{}' failed during search: {}. Continuing with remaining providers.",
-                                provider.getProviderName(), e.getMessage());
-                        failedProviders.add(provider.getProviderName());
-                        providerDiagnostics.put(provider.getProviderName(), ProviderLog.builder()
-                                .providerName(provider.getProviderName())
-                                .providerMode(resolveProviderMode(provider))
-                                .status("FAILED")
-                                .failureReason(e.getMessage())
-                                .build());
-                        return List.<NormalizedProductOfferDto>of();
-                    }
-                }, providerExecutor)
-                .orTimeout(5, TimeUnit.SECONDS)
-                .exceptionally(ex -> {
-                    log.warn("Provider '{}' timed out or failed: {}", provider.getProviderName(), ex.getMessage());
-                    failedProviders.add(provider.getProviderName());
-                    providerDiagnostics.put(provider.getProviderName(), ProviderLog.builder()
-                            .providerName(provider.getProviderName())
-                            .providerMode(resolveProviderMode(provider))
-                            .status("TIMEOUT_OR_FAILED")
-                            .failureReason(ex.getMessage())
-                            .build());
-                    return List.of();
-                }))
+                .map(provider -> CompletableFuture
+                        .supplyAsync(() -> {
+                            try {
+                                List<NormalizedProductOfferDto> results = provider.searchProducts(
+                                        rawQuery,
+                                        page,
+                                        pageSize);
+
+                                int resultCount = results == null
+                                        ? 0
+                                        : results.size();
+
+                                providerDiagnostics.put(
+                                        provider.getProviderName(),
+                                        ProviderLog.builder()
+                                                .providerName(provider.getProviderName())
+                                                .providerMode(resolveProviderMode(provider))
+                                                .status(resultCount > 0
+                                                        ? "SUCCESS_WITH_RESULTS"
+                                                        : "SUCCESS_EMPTY")
+                                                .rawResultCount(resultCount)
+                                                .normalizedResultCount(0)
+                                                .acceptedResultCount(0)
+                                                .failureReason(resultCount == 0
+                                                        ? "Provider returned no offers for this query."
+                                                        : null)
+                                                .build());
+
+                                return results == null
+                                        ? List.<NormalizedProductOfferDto>of()
+                                        : results;
+
+                            } catch (Exception e) {
+
+                                log.error(
+                                        "Provider '{}' failed during search: {}",
+                                        provider.getProviderName(),
+                                        e.getMessage());
+
+                                failedProviders.add(
+                                        provider.getProviderName());
+
+                                providerDiagnostics.put(
+                                        provider.getProviderName(),
+                                        ProviderLog.builder()
+                                                .providerName(provider.getProviderName())
+                                                .providerMode(resolveProviderMode(provider))
+                                                .status("FAILED")
+                                                .failureReason(e.getMessage())
+                                                .build());
+
+                                return List.<NormalizedProductOfferDto>of();
+                            }
+                        }, providerExecutor)
+                        .orTimeout(5, TimeUnit.SECONDS)
+                        .exceptionally(ex -> {
+
+                            log.warn(
+                                    "Provider '{}' timed out or failed: {}",
+                                    provider.getProviderName(),
+                                    ex.getMessage());
+
+                            failedProviders.add(
+                                    provider.getProviderName());
+
+                            providerDiagnostics.put(
+                                    provider.getProviderName(),
+                                    ProviderLog.builder()
+                                            .providerName(provider.getProviderName())
+                                            .providerMode(resolveProviderMode(provider))
+                                            .status("TIMEOUT_OR_FAILED")
+                                            .failureReason(ex.getMessage())
+                                            .build());
+
+                            return List.of();
+                        }))
                 .toList();
 
+        // 2. Collect raw provider results.
         List<NormalizedProductOfferDto> rawOffers = futures.stream()
                 .map(CompletableFuture::join)
                 .flatMap(Collection::stream)
                 .collect(Collectors.toCollection(ArrayList::new));
 
-        // 2. Data Normalization
+        // 3. Normalize provider results.
         List<NormalizedProductOfferDto> normalized = normalizationService.normalizeOffers(rawOffers);
+
+        // Count normalized offers for each provider.
         for (ProviderLog diagnostic : providerDiagnostics.values()) {
+
             long normalizedCount = normalized.stream()
-                    .filter(offer -> diagnostic.getProviderName().equalsIgnoreCase(offer.getProvider()))
+                    .filter(offer -> offer.getProvider() != null
+                            && diagnostic.getProviderName()
+                                    .equalsIgnoreCase(offer.getProvider()))
                     .count();
+
             diagnostic.setNormalizedResultCount((int) normalizedCount);
             diagnostic.setAcceptedResultCount((int) normalizedCount);
+
+            if (normalizedCount > 0) {
+
+                if (!successfulProviders.contains(
+                        diagnostic.getProviderName())) {
+                    successfulProviders.add(
+                            diagnostic.getProviderName());
+                }
+
+                diagnostic.setStatus("SUCCESS_WITH_RESULTS");
+                diagnostic.setFailureReason(null);
+
+            } else if ("SUCCESS_WITH_RESULTS".equals(
+                    diagnostic.getStatus())) {
+
+                diagnostic.setStatus("REJECTED_NO_VALID_OFFERS");
+                diagnostic.setFailureReason(
+                        "Provider returned offers, but none passed normalization.");
+            }
         }
 
-        // 3. Generic Relevance Engine & Generic Accessory Downranking
+        // 4. Generic relevance engine and accessory downranking.
         for (NormalizedProductOfferDto offer : normalized) {
-            double relevance = calculateGenericRelevance(offer, rawQuery);
+            double relevance = calculateGenericRelevance(
+                    offer,
+                    rawQuery);
             offer.setRelevanceScore(relevance);
         }
 
-        // 4. Product Matching & Canonical Offer Grouping
+        // 5. Product matching and canonical grouping.
         List<CanonicalProductGroupDto> canonicalGroups = productMatchingService.matchAndGroupOffers(normalized);
+
         if (productPersistenceService != null) {
             try {
-                productPersistenceService.persistCanonicalGroupsAndOffers(canonicalGroups);
+                productPersistenceService
+                        .persistCanonicalGroupsAndOffers(canonicalGroups);
             } catch (Exception e) {
-                log.warn("Error persisting canonical groups: {}", e.getMessage());
+                log.warn(
+                        "Error persisting canonical groups: {}",
+                        e.getMessage());
             }
         }
+
         List<NormalizedProductOfferDto> matchedOffers = normalized;
 
-        // 5. Dynamic Facet Extraction (Categories, Brands, Merchants, and dynamic attributes)
+        // 6. Dynamic category extraction.
         List<String> availableCategories = matchedOffers.stream()
                 .map(NormalizedProductOfferDto::getCategory)
                 .filter(Objects::nonNull)
                 .map(String::trim)
-                .filter(s -> !s.isBlank() && !"General".equalsIgnoreCase(s))
+                .filter(s -> !s.isBlank()
+                        && !"General".equalsIgnoreCase(s))
                 .distinct()
                 .sorted(String.CASE_INSENSITIVE_ORDER)
                 .collect(Collectors.toList());
@@ -198,7 +300,8 @@ public class ProductSearchOrchestratorImpl implements ProductSearchOrchestrator 
                 .map(NormalizedProductOfferDto::getBrand)
                 .filter(Objects::nonNull)
                 .map(String::trim)
-                .filter(s -> !s.isBlank() && !"Generic".equalsIgnoreCase(s))
+                .filter(s -> !s.isBlank()
+                        && !"Generic".equalsIgnoreCase(s))
                 .distinct()
                 .sorted(String.CASE_INSENSITIVE_ORDER)
                 .collect(Collectors.toList());
@@ -214,68 +317,110 @@ public class ProductSearchOrchestratorImpl implements ProductSearchOrchestrator 
 
         Map<String, List<String>> dynamicFilters = extractDynamicAttributeFacets(matchedOffers);
 
-        // 6. Apply Generic User Filters
+        // 7. Apply user filters.
         List<NormalizedProductOfferDto> filtered = matchedOffers.stream()
                 .filter(offer -> matchesFilters(offer, request))
                 .collect(Collectors.toList());
 
-        // 7. Relevance / Multi-factor Ranking & Sorting
-        String sortBy = request.getSortBy() != null ? request.getSortBy().trim().toLowerCase(Locale.ROOT) : "best";
+        // 8. Ranking and sorting.
+        String sortBy = request.getSortBy() != null
+                ? request.getSortBy().trim().toLowerCase(Locale.ROOT)
+                : "best";
+
         List<NormalizedProductOfferDto> ranked = rankAndSort(filtered, sortBy, rawQuery);
 
-        // 8. Find Overall Cheapest Price & Merchant
+        // 9. Find cheapest price and merchant.
         BigDecimal cheapestPrice = null;
         String cheapestMerchant = null;
+
         if (!ranked.isEmpty()) {
+
             NormalizedProductOfferDto cheapest = ranked.stream()
-                    .min(Comparator.comparing(o -> o.getEffectivePrice() != null ? o.getEffectivePrice() : o.getPrice()))
+                    .min(Comparator.comparing(
+                            o -> o.getEffectivePrice() != null
+                                    ? o.getEffectivePrice()
+                                    : o.getPrice()))
                     .orElse(ranked.get(0));
 
-            cheapestPrice = cheapest.getEffectivePrice() != null ? cheapest.getEffectivePrice() : cheapest.getPrice();
+            cheapestPrice = cheapest.getEffectivePrice() != null
+                    ? cheapest.getEffectivePrice()
+                    : cheapest.getPrice();
+
             cheapestMerchant = cheapest.getMerchant();
         }
 
-        // 9. AI Recommendation & Ranking Explanation
+        // 10. AI recommendation and ranking explanation.
         AiRecommendationDto recommendation = recommendationService.recommendProducts(ranked);
+
         var rankingSummary = rankingService.getRankingSummary(ranked);
 
-
-
-        // 11. Pagination Calculation
+        // 11. Pagination.
         int totalOffers = ranked.size();
-        int totalPages = Math.max(1, (int) Math.ceil((double) totalOffers / pageSize));
-        int fromIndex = Math.min((page - 1) * pageSize, totalOffers);
-        int toIndex = Math.min(fromIndex + pageSize, totalOffers);
+
+        int totalPages = Math.max(
+                1,
+                (int) Math.ceil((double) totalOffers / pageSize));
+
+        int fromIndex = Math.min(
+                (page - 1) * pageSize,
+                totalOffers);
+
+        int toIndex = Math.min(
+                fromIndex + pageSize,
+                totalOffers);
+
         List<NormalizedProductOfferDto> pagedOffers = new ArrayList<>(ranked.subList(fromIndex, toIndex));
+
         boolean hasMore = toIndex < totalOffers;
 
-        // 12. Status and Partial Success Handling
+        // 12. Search status and partial success handling.
         String status = "SUCCESS";
         String statusMessage = null;
+
         if (totalOffers == 0) {
-            if (successfulProviders.isEmpty() && !failedProviders.isEmpty()) {
+
+            if (successfulProviders.isEmpty()
+                    && !failedProviders.isEmpty()) {
+
                 status = "FAILED";
                 statusMessage = "All providers failed to return results.";
-            } else {
-                // No offers but at least one provider succeeded – treat as honest success.
+
+            } else if (successfulProviders.isEmpty()) {
+
                 status = "SUCCESS";
-                statusMessage = "No products matched the query, but providers responded successfully.";
+                statusMessage = "No verified product offers are currently available. Try the marketplace search links.";
+
+            } else {
+
+                status = "SUCCESS";
+                statusMessage = "Providers responded, but no valid product offers matched the query.";
             }
-        } else if (!failedProviders.isEmpty() && !successfulProviders.isEmpty()) {
+
+        } else if (!failedProviders.isEmpty()
+                && !successfulProviders.isEmpty()) {
+
             status = "PARTIAL_SUCCESS";
             statusMessage = "Some stores couldn't be reached. Showing available results.";
-        } else if (successfulProviders.isEmpty() && !failedProviders.isEmpty()) {
+
+        } else if (successfulProviders.isEmpty()
+                && !failedProviders.isEmpty()) {
+
             status = "FAILED";
             statusMessage = "All store providers are currently unavailable. Please try again.";
         }
 
-
+        // 13. Filter canonical groups to active offers.
         List<CanonicalProductGroupDto> activeCanonicalGroups = canonicalGroups.stream()
-                .filter(group -> group.getOffers() != null && group.getOffers().stream().anyMatch(filtered::contains))
+                .filter(group -> group.getOffers() != null
+                        && group.getOffers()
+                                .stream()
+                                .anyMatch(filtered::contains))
                 .map(group -> {
+
                     List<NormalizedProductOfferDto> grpOffers = group.getOffers().stream()
                             .filter(filtered::contains)
                             .collect(Collectors.toList());
+
                     return CanonicalProductGroupDto.builder()
                             .productId(group.getProductId())
                             .canonicalKey(group.getCanonicalKey())
@@ -286,8 +431,18 @@ public class ProductSearchOrchestratorImpl implements ProductSearchOrchestrator 
                             .rating(group.getRating())
                             .reviewCount(group.getReviewCount())
                             .attributes(group.getAttributes())
-                            .lowestPrice(grpOffers.stream().map(NormalizedProductOfferDto::getPrice).filter(Objects::nonNull).min(Comparator.naturalOrder()).orElse(group.getLowestPrice()))
-                            .highestPrice(grpOffers.stream().map(NormalizedProductOfferDto::getPrice).filter(Objects::nonNull).max(Comparator.naturalOrder()).orElse(group.getHighestPrice()))
+                            .lowestPrice(
+                                    grpOffers.stream()
+                                            .map(NormalizedProductOfferDto::getPrice)
+                                            .filter(Objects::nonNull)
+                                            .min(Comparator.naturalOrder())
+                                            .orElse(group.getLowestPrice()))
+                            .highestPrice(
+                                    grpOffers.stream()
+                                            .map(NormalizedProductOfferDto::getPrice)
+                                            .filter(Objects::nonNull)
+                                            .max(Comparator.naturalOrder())
+                                            .orElse(group.getHighestPrice()))
                             .cheapestMerchant(group.getCheapestMerchant())
                             .priceSpread(group.getPriceSpread())
                             .offers(grpOffers)
@@ -296,29 +451,47 @@ public class ProductSearchOrchestratorImpl implements ProductSearchOrchestrator 
                 .filter(group -> !group.getOffers().isEmpty())
                 .collect(Collectors.toList());
 
+        // 14. Direct marketplace search links.
         Map<String, String> marketplaceSearchLinks = new LinkedHashMap<>();
+
         if (!rawQuery.isBlank()) {
-            String encodedQuery = java.net.URLEncoder.encode(rawQuery, java.nio.charset.StandardCharsets.UTF_8);
-            marketplaceSearchLinks.put("Amazon", "https://www.amazon.in/s?k=" + encodedQuery);
-            marketplaceSearchLinks.put("Flipkart", "https://www.flipkart.com/search?q=" + encodedQuery);
+
+            String encodedQuery = java.net.URLEncoder.encode(
+                    rawQuery,
+                    java.nio.charset.StandardCharsets.UTF_8);
+
+            marketplaceSearchLinks.put(
+                    "Amazon",
+                    "https://www.amazon.in/s?k=" + encodedQuery);
+
+            marketplaceSearchLinks.put(
+                    "Flipkart",
+                    "https://www.flipkart.com/search?q=" + encodedQuery);
         }
 
+        // 15. Build response.
         return ProductComparisonResponseDto.builder()
                 .query(rawQuery)
                 .totalOffers(totalOffers)
                 .cheapestPrice(cheapestPrice)
                 .cheapestMerchant(cheapestMerchant)
                 .offers(pagedOffers)
-                .canonicalProducts(activeCanonicalGroups.isEmpty() ? canonicalGroups : activeCanonicalGroups)
+                .canonicalProducts(
+                        activeCanonicalGroups.isEmpty()
+                                ? canonicalGroups
+                                : activeCanonicalGroups)
                 .aiRecommendation(recommendation)
                 .rankingSummary(rankingSummary)
                 .status(status)
                 .statusMessage(statusMessage)
                 .successfulProviders(new ArrayList<>(successfulProviders))
                 .failedProviders(new ArrayList<>(failedProviders))
-                .providerDiagnostics(providerDiagnostics.values().stream()
-                        .sorted(Comparator.comparing(ProviderLog::getProviderName))
-                        .collect(Collectors.toList()))
+                .providerDiagnostics(
+                        providerDiagnostics.values().stream()
+                                .sorted(
+                                        Comparator.comparing(
+                                                ProviderLog::getProviderName))
+                                .collect(Collectors.toList()))
                 .page(page)
                 .pageSize(pageSize)
                 .totalPages(totalPages)
@@ -331,215 +504,400 @@ public class ProductSearchOrchestratorImpl implements ProductSearchOrchestrator 
                 .build();
     }
 
-
+    // Provider mode reporting.
     private String resolveProviderMode(ProductProvider provider) {
-        if (provider instanceof AmazonProductProvider amazon) {
+
+        if (provider instanceof AmazonProductProvider) {
             return "UNAVAILABLE_NO_AUTHORIZED_API";
         }
-        if (provider instanceof FlipkartProductProvider flipkart) {
+
+        if (provider instanceof FlipkartProductProvider) {
             return "UNAVAILABLE_NO_AUTHORIZED_API";
         }
+
         if (provider instanceof CromaProductProvider) {
-            return "MOCK_CATALOG";
+            return "UNAVAILABLE_NO_AUTHORIZED_API";
         }
+
         if (provider instanceof OpenProductDataProvider) {
-            return "EXTERNAL_API_WITH_FALLBACK";
+            return "UNAVAILABLE_NO_AUTHORIZED_API";
         }
+
         if (provider instanceof MercadoLibreProductProvider) {
-            return "EXTERNAL_API_WITH_FALLBACK";
+            return "EXTERNAL_API_UNVERIFIED_INR_PRICING";
         }
+
         return "PROVIDER_DEFINED";
     }
 
     @Override
     public List<String> getSearchSuggestions(String prefix) {
+
         if (prefix == null || prefix.trim().length() < 2) {
             return List.of();
         }
+
         String clean = prefix.trim().toLowerCase(Locale.ROOT);
+
         Set<String> suggestions = new LinkedHashSet<>();
 
         for (ProductProvider provider : providers) {
+
             try {
+
                 List<NormalizedProductOfferDto> offers = provider.searchProducts(clean, 1, 5);
+
                 if (offers != null) {
+
                     for (NormalizedProductOfferDto offer : offers) {
-                        if (offer.getProductName() != null && offer.getProductName().toLowerCase().contains(clean)) {
-                            suggestions.add(cleanTitleForSuggestion(offer.getProductName()));
+
+                        if (offer.getProductName() != null
+                                && offer.getProductName()
+                                        .toLowerCase(Locale.ROOT)
+                                        .contains(clean)) {
+
+                            suggestions.add(
+                                    cleanTitleForSuggestion(
+                                            offer.getProductName()));
                         }
-                        if (offer.getBrand() != null && offer.getBrand().toLowerCase().startsWith(clean)) {
+
+                        if (offer.getBrand() != null
+                                && offer.getBrand()
+                                        .toLowerCase(Locale.ROOT)
+                                        .startsWith(clean)) {
+
                             suggestions.add(offer.getBrand());
                         }
-                        if (offer.getCategory() != null && offer.getCategory().toLowerCase().contains(clean)) {
-                            suggestions.add(capitalizeWords(offer.getCategory().replace("-", " ")));
+
+                        if (offer.getCategory() != null
+                                && offer.getCategory()
+                                        .toLowerCase(Locale.ROOT)
+                                        .contains(clean)) {
+
+                            suggestions.add(
+                                    capitalizeWords(
+                                            offer.getCategory()
+                                                    .replace("-", " ")));
                         }
                     }
                 }
-            } catch (Exception ignored) {}
-            if (suggestions.size() >= 8) break;
+
+            } catch (Exception ignored) {
+                // Suggestions from other providers should still be available.
+            }
+
+            if (suggestions.size() >= 8) {
+                break;
+            }
         }
 
-        return suggestions.stream().limit(8).toList();
+        return suggestions.stream()
+                .limit(8)
+                .toList();
     }
 
-    private double calculateGenericRelevance(NormalizedProductOfferDto offer, String rawQuery) {
+    private double calculateGenericRelevance(
+            NormalizedProductOfferDto offer,
+            String rawQuery) {
+
         if (rawQuery == null || rawQuery.isBlank()) {
             return 100.0;
         }
 
         String queryLower = rawQuery.toLowerCase(Locale.ROOT).trim();
-        String titleLower = offer.getTitle() != null ? offer.getTitle().toLowerCase(Locale.ROOT) : "";
-        String brandLower = offer.getBrand() != null ? offer.getBrand().toLowerCase(Locale.ROOT) : "";
-        String categoryLower = offer.getCategory() != null ? offer.getCategory().toLowerCase(Locale.ROOT) : "";
+
+        String titleLower = offer.getTitle() != null
+                ? offer.getTitle().toLowerCase(Locale.ROOT)
+                : "";
+
+        String brandLower = offer.getBrand() != null
+                ? offer.getBrand().toLowerCase(Locale.ROOT)
+                : "";
+
+        String categoryLower = offer.getCategory() != null
+                ? offer.getCategory().toLowerCase(Locale.ROOT)
+                : "";
 
         double score = 0.0;
 
-        // 1. Exact phrase match
+        // Exact phrase match.
         if (titleLower.contains(queryLower)) {
             score += 45.0;
         }
 
-        // 2. Token overlap ratio
-        List<String> queryTokens = Arrays.stream(queryLower.split("\\s+"))
+        // Token overlap.
+        List<String> queryTokens = Arrays.stream(
+                queryLower.split("\\s+"))
                 .map(String::trim)
                 .filter(t -> !t.isEmpty() && !STOP_WORDS.contains(t))
                 .toList();
 
         if (!queryTokens.isEmpty()) {
+
             long matchedTokens = queryTokens.stream()
-                    .filter(token -> titleLower.contains(token) || brandLower.contains(token) || categoryLower.contains(token))
+                    .filter(token -> titleLower.contains(token)
+                            || brandLower.contains(token)
+                            || categoryLower.contains(token))
                     .count();
 
             double overlapRatio = (double) matchedTokens / queryTokens.size();
-            score += (overlapRatio * 35.0);
 
-            // Bonus if all tokens match
+            score += overlapRatio * 35.0;
+
             if (matchedTokens == queryTokens.size()) {
                 score += 10.0;
             }
         }
 
-        // 3. Brand match
-        if (!brandLower.isEmpty() && !brandLower.equals("generic") && queryLower.contains(brandLower)) {
+        // Brand match.
+        if (!brandLower.isEmpty()
+                && !brandLower.equals("generic")
+                && queryLower.contains(brandLower)) {
+
             score += 15.0;
         }
 
-        // 4. Category match
-        if (!categoryLower.isEmpty() && queryLower.contains(categoryLower.replace("-", " "))) {
+        // Category match.
+        if (!categoryLower.isEmpty()
+                && queryLower.contains(
+                        categoryLower.replace("-", " "))) {
+
             score += 10.0;
         }
 
-        // 5. Model / SKU match
-        if (offer.getModel() != null && !offer.getModel().isBlank() && queryLower.contains(offer.getModel().toLowerCase(Locale.ROOT))) {
+        // Model / SKU match.
+        if (offer.getModel() != null
+                && !offer.getModel().isBlank()
+                && queryLower.contains(
+                        offer.getModel().toLowerCase(Locale.ROOT))) {
+
             score += 10.0;
         }
 
-        // 6. Generic Accessory Downranking (Part 8)
-        boolean queryWantsAccessory = ACCESSORY_INDICATORS.stream().anyMatch(queryLower::contains);
+        // Accessory downranking.
+        boolean queryWantsAccessory = ACCESSORY_INDICATORS.stream()
+                .anyMatch(queryLower::contains);
+
         if (!queryWantsAccessory) {
-            boolean isOfferAccessory = ACCESSORY_INDICATORS.stream().anyMatch(titleLower::contains)
+
+            boolean isOfferAccessory = ACCESSORY_INDICATORS.stream()
+                    .anyMatch(titleLower::contains)
                     || categoryLower.contains("accessories");
+
             if (isOfferAccessory) {
                 score = Math.max(5.0, score - 35.0);
             }
         }
 
-        return Math.min(100.0, Math.max(0.0, Math.round(score * 10.0) / 10.0));
+        return Math.min(
+                100.0,
+                Math.max(
+                        0.0,
+                        Math.round(score * 10.0) / 10.0));
     }
 
-    private boolean matchesFilters(NormalizedProductOfferDto offer, ProductSearchRequestDto req) {
-        // Merchant filter
-        if (req.getMerchant() != null && !req.getMerchant().isBlank() && !"all".equalsIgnoreCase(req.getMerchant())) {
-            if (!offer.getMerchant().equalsIgnoreCase(req.getMerchant().trim())) {
+    private boolean matchesFilters(
+            NormalizedProductOfferDto offer,
+            ProductSearchRequestDto req) {
+
+        // Merchant filter.
+        if (req.getMerchant() != null
+                && !req.getMerchant().isBlank()
+                && !"all".equalsIgnoreCase(req.getMerchant())) {
+
+            if (offer.getMerchant() == null
+                    || !offer.getMerchant().equalsIgnoreCase(
+                            req.getMerchant().trim())) {
                 return false;
             }
         }
 
-        // Brand filter
-        if (req.getBrand() != null && !req.getBrand().isBlank() && !"all".equalsIgnoreCase(req.getBrand())) {
-            if (!offer.getBrand().equalsIgnoreCase(req.getBrand().trim())) {
+        // Brand filter.
+        if (req.getBrand() != null
+                && !req.getBrand().isBlank()
+                && !"all".equalsIgnoreCase(req.getBrand())) {
+
+            if (offer.getBrand() == null
+                    || !offer.getBrand().equalsIgnoreCase(
+                            req.getBrand().trim())) {
                 return false;
             }
         }
 
-        // Category filter
-        if (req.getCategory() != null && !req.getCategory().isBlank() && !"all".equalsIgnoreCase(req.getCategory()) && !"all categories".equalsIgnoreCase(req.getCategory())) {
-            if (!offer.getCategory().equalsIgnoreCase(req.getCategory().trim())) {
+        // Category filter.
+        if (req.getCategory() != null
+                && !req.getCategory().isBlank()
+                && !"all".equalsIgnoreCase(req.getCategory())
+                && !"all categories".equalsIgnoreCase(req.getCategory())) {
+
+            if (offer.getCategory() == null
+                    || !offer.getCategory().equalsIgnoreCase(
+                            req.getCategory().trim())) {
                 return false;
             }
         }
 
-        // Min price
-        if (req.getMinPrice() != null && offer.getPrice().compareTo(req.getMinPrice()) < 0) {
+        // Minimum price.
+        if (req.getMinPrice() != null
+                && (offer.getPrice() == null
+                        || offer.getPrice().compareTo(req.getMinPrice()) < 0)) {
+
             return false;
         }
 
-        // Max price
-        if (req.getMaxPrice() != null && offer.getPrice().compareTo(req.getMaxPrice()) > 0) {
+        // Maximum price.
+        if (req.getMaxPrice() != null
+                && (offer.getPrice() == null
+                        || offer.getPrice().compareTo(req.getMaxPrice()) > 0)) {
+
             return false;
         }
 
-        // In-stock
-        if (Boolean.TRUE.equals(req.getInStockOnly()) && Boolean.FALSE.equals(offer.getInStock())) {
+        // In-stock filter.
+        if (Boolean.TRUE.equals(req.getInStockOnly())
+                && Boolean.FALSE.equals(offer.getInStock())) {
+
             return false;
         }
 
-        // Minimum rating
+        // Minimum rating.
         if (req.getMinRating() != null && req.getMinRating() > 0) {
-            if (offer.getRating() == null || offer.getRating() < req.getMinRating()) {
+
+            if (offer.getRating() == null
+                    || offer.getRating() < req.getMinRating()) {
+
                 return false;
             }
         }
 
-        // Delivery speed
-        if (req.getDelivery() != null && !req.getDelivery().isBlank() && !"all".equalsIgnoreCase(req.getDelivery())) {
-            String deliv = offer.getDelivery() != null ? offer.getDelivery().toLowerCase(Locale.ROOT) : "";
-            String filter = req.getDelivery().toLowerCase(Locale.ROOT).trim();
-            if ("same_day".equals(filter) || "sameday".equals(filter)) {
-                if (!deliv.contains("same day") && !deliv.contains("today")) return false;
-            } else if ("next_day".equals(filter) || "tomorrow".equals(filter)) {
-                if (!deliv.contains("tomorrow") && !deliv.contains("1 day") && !deliv.contains("same day") && !deliv.contains("today")) return false;
+        // Delivery speed.
+        if (req.getDelivery() != null
+                && !req.getDelivery().isBlank()
+                && !"all".equalsIgnoreCase(req.getDelivery())) {
+
+            String deliv = offer.getDelivery() != null
+                    ? offer.getDelivery().toLowerCase(Locale.ROOT)
+                    : "";
+
+            String filter = req.getDelivery()
+                    .toLowerCase(Locale.ROOT)
+                    .trim();
+
+            if ("same_day".equals(filter)
+                    || "sameday".equals(filter)) {
+
+                if (!deliv.contains("same day")
+                        && !deliv.contains("today")) {
+                    return false;
+                }
+
+            } else if ("next_day".equals(filter)
+                    || "tomorrow".equals(filter)) {
+
+                if (!deliv.contains("tomorrow")
+                        && !deliv.contains("1 day")
+                        && !deliv.contains("same day")
+                        && !deliv.contains("today")) {
+                    return false;
+                }
+
             } else if ("express".equals(filter)) {
-                if (!deliv.contains("express") && !deliv.contains("same day") && !deliv.contains("tomorrow") && !deliv.contains("today")) return false;
+
+                if (!deliv.contains("express")
+                        && !deliv.contains("same day")
+                        && !deliv.contains("tomorrow")
+                        && !deliv.contains("today")) {
+                    return false;
+                }
+
             } else if ("free".equals(filter)) {
-                if (!deliv.contains("free")) return false;
-            } else {
-                if (!deliv.contains(filter)) return false;
-            }
-        }
 
-        // Backward compatibility: RAM
-        if (req.getRam() != null && !req.getRam().isBlank() && !"all".equalsIgnoreCase(req.getRam())) {
-            String cleanRam = req.getRam().toLowerCase().replaceAll("\\s+", "");
-            String offerRam = offer.getAttributeValue("RAM") != null ? offer.getAttributeValue("RAM").toLowerCase().replaceAll("\\s+", "") : "";
-            String title = offer.getTitle() != null ? offer.getTitle().toLowerCase() : "";
-            if (!offerRam.contains(cleanRam) && !title.contains(cleanRam)) {
+                if (!deliv.contains("free")) {
+                    return false;
+                }
+
+            } else if (!deliv.contains(filter)) {
                 return false;
             }
         }
 
-        // Backward compatibility: Storage
-        if (req.getStorage() != null && !req.getStorage().isBlank() && !"all".equalsIgnoreCase(req.getStorage())) {
-            String cleanStorage = req.getStorage().toLowerCase().replaceAll("\\s+", "");
-            String offerStorage = offer.getAttributeValue("Storage") != null ? offer.getAttributeValue("Storage").toLowerCase().replaceAll("\\s+", "") : "";
-            String title = offer.getTitle() != null ? offer.getTitle().toLowerCase() : "";
-            if (!offerStorage.contains(cleanStorage) && !title.contains(cleanStorage)) {
+        // RAM filter.
+        if (req.getRam() != null
+                && !req.getRam().isBlank()
+                && !"all".equalsIgnoreCase(req.getRam())) {
+
+            String cleanRam = req.getRam()
+                    .toLowerCase(Locale.ROOT)
+                    .replaceAll("\\s+", "");
+
+            String offerRam = offer.getAttributeValue("RAM") != null
+                    ? offer.getAttributeValue("RAM")
+                            .toLowerCase(Locale.ROOT)
+                            .replaceAll("\\s+", "")
+                    : "";
+
+            String title = offer.getTitle() != null
+                    ? offer.getTitle().toLowerCase(Locale.ROOT)
+                    : "";
+
+            if (!offerRam.contains(cleanRam)
+                    && !title.contains(cleanRam)) {
                 return false;
             }
         }
 
-        // Dynamic attribute filters (e.g. Size, Color, Capacity, Energy Rating)
-        if (req.getAttributeFilters() != null && !req.getAttributeFilters().isEmpty()) {
+        // Storage filter.
+        if (req.getStorage() != null
+                && !req.getStorage().isBlank()
+                && !"all".equalsIgnoreCase(req.getStorage())) {
+
+            String cleanStorage = req.getStorage()
+                    .toLowerCase(Locale.ROOT)
+                    .replaceAll("\\s+", "");
+
+            String offerStorage = offer.getAttributeValue("Storage") != null
+                    ? offer.getAttributeValue("Storage")
+                            .toLowerCase(Locale.ROOT)
+                            .replaceAll("\\s+", "")
+                    : "";
+
+            String title = offer.getTitle() != null
+                    ? offer.getTitle().toLowerCase(Locale.ROOT)
+                    : "";
+
+            if (!offerStorage.contains(cleanStorage)
+                    && !title.contains(cleanStorage)) {
+                return false;
+            }
+        }
+
+        // Dynamic attribute filters.
+        if (req.getAttributeFilters() != null
+                && !req.getAttributeFilters().isEmpty()) {
+
             for (Map.Entry<String, String> entry : req.getAttributeFilters().entrySet()) {
+
                 String filterKey = entry.getKey();
                 String filterVal = entry.getValue();
-                if (filterVal != null && !filterVal.isBlank() && !"all".equalsIgnoreCase(filterVal)) {
-                    String actualVal = offer.getAttributeValue(filterKey);
-                    String title = offer.getTitle() != null ? offer.getTitle().toLowerCase(Locale.ROOT) : "";
-                    String target = filterVal.trim().toLowerCase(Locale.ROOT);
 
-                    boolean match = (actualVal != null && actualVal.toLowerCase(Locale.ROOT).contains(target))
+                if (filterVal != null
+                        && !filterVal.isBlank()
+                        && !"all".equalsIgnoreCase(filterVal)) {
+
+                    String actualVal = offer.getAttributeValue(filterKey);
+
+                    String title = offer.getTitle() != null
+                            ? offer.getTitle().toLowerCase(Locale.ROOT)
+                            : "";
+
+                    String target = filterVal.trim()
+                            .toLowerCase(Locale.ROOT);
+
+                    boolean match = (actualVal != null
+                            && actualVal.toLowerCase(Locale.ROOT)
+                                    .contains(target))
                             || title.contains(target);
+
                     if (!match) {
                         return false;
                     }
@@ -550,93 +908,187 @@ public class ProductSearchOrchestratorImpl implements ProductSearchOrchestrator 
         return true;
     }
 
-    private List<NormalizedProductOfferDto> rankAndSort(List<NormalizedProductOfferDto> offers, String sortBy, String query) {
+    private List<NormalizedProductOfferDto> rankAndSort(
+            List<NormalizedProductOfferDto> offers,
+            String sortBy,
+            String query) {
+
         if (offers == null || offers.isEmpty()) {
             return new ArrayList<>();
         }
 
         switch (sortBy) {
+
             case "relevance":
+
                 List<NormalizedProductOfferDto> sortedRel = new ArrayList<>(offers);
-                sortedRel.sort(Comparator.comparingDouble((NormalizedProductOfferDto o) -> o.getRelevanceScore() != null ? o.getRelevanceScore() : 0.0).reversed()
-                        .thenComparing(o -> o.getEffectivePrice() != null ? o.getEffectivePrice() : o.getPrice()));
-                return rankingService.rankAndMarkCheapest(sortedRel, "best");
+
+                sortedRel.sort(
+                        Comparator.comparingDouble(
+                                (NormalizedProductOfferDto o) -> o.getRelevanceScore() != null
+                                        ? o.getRelevanceScore()
+                                        : 0.0)
+                                .reversed()
+                                .thenComparing(
+                                        o -> o.getEffectivePrice() != null
+                                                ? o.getEffectivePrice()
+                                                : o.getPrice()));
+
+                return rankingService.rankAndMarkCheapest(
+                        sortedRel,
+                        "best");
 
             case "price_asc":
             case "cheapest":
-                return rankingService.rankAndMarkCheapest(offers, "price_asc");
+
+                return rankingService.rankAndMarkCheapest(
+                        offers,
+                        "price_asc");
 
             case "price_desc":
+
                 List<NormalizedProductOfferDto> sortedDesc = new ArrayList<>(offers);
-                sortedDesc.sort(Comparator.comparing((NormalizedProductOfferDto o) -> o.getEffectivePrice() != null ? o.getEffectivePrice() : o.getPrice(), Comparator.reverseOrder())
-                        .thenComparing(o -> o.getRating() != null ? o.getRating() : 0.0, Comparator.reverseOrder()));
-                return rankingService.rankAndMarkCheapest(sortedDesc, "price_desc");
+
+                sortedDesc.sort(
+                        Comparator.comparing(
+                                (NormalizedProductOfferDto o) -> o.getEffectivePrice() != null
+                                        ? o.getEffectivePrice()
+                                        : o.getPrice(),
+                                Comparator.reverseOrder())
+                                .thenComparing(
+                                        o -> o.getRating() != null
+                                                ? o.getRating()
+                                                : 0.0,
+                                        Comparator.reverseOrder()));
+
+                return rankingService.rankAndMarkCheapest(
+                        sortedDesc,
+                        "price_desc");
 
             case "rating":
             case "highest_rated":
-                return rankingService.rankAndMarkCheapest(offers, "rating");
+
+                return rankingService.rankAndMarkCheapest(
+                        offers,
+                        "rating");
 
             case "fastest_delivery":
             case "delivery":
-                return rankingService.rankAndMarkCheapest(offers, "fastest_delivery");
+
+                return rankingService.rankAndMarkCheapest(
+                        offers,
+                        "fastest_delivery");
 
             case "discount":
-                return rankingService.rankAndMarkCheapest(offers, "discount");
+
+                return rankingService.rankAndMarkCheapest(
+                        offers,
+                        "discount");
 
             case "best":
             case "best_value":
             default:
-                List<NormalizedProductOfferDto> ranked = new ArrayList<>(rankingService.rankAndMarkCheapest(offers, "best"));
+
+                List<NormalizedProductOfferDto> ranked = new ArrayList<>(
+                        rankingService.rankAndMarkCheapest(
+                                offers,
+                                "best"));
+
                 if (query != null && !query.isBlank()) {
-                    // Stable sort prioritizing high-relevance matches
+
                     ranked.sort((a, b) -> {
-                        double relA = a.getRelevanceScore() != null ? a.getRelevanceScore() : 50.0;
-                        double relB = b.getRelevanceScore() != null ? b.getRelevanceScore() : 50.0;
-                        // If relevance differs by more than 20 points, relevance takes priority
+
+                        double relA = a.getRelevanceScore() != null
+                                ? a.getRelevanceScore()
+                                : 50.0;
+
+                        double relB = b.getRelevanceScore() != null
+                                ? b.getRelevanceScore()
+                                : 50.0;
+
                         if (Math.abs(relA - relB) >= 20.0) {
                             return Double.compare(relB, relA);
                         }
-                        double scoreA = a.getFinalScore() != null ? a.getFinalScore() : 0.0;
-                        double scoreB = b.getFinalScore() != null ? b.getFinalScore() : 0.0;
+
+                        double scoreA = a.getFinalScore() != null
+                                ? a.getFinalScore()
+                                : 0.0;
+
+                        double scoreB = b.getFinalScore() != null
+                                ? b.getFinalScore()
+                                : 0.0;
+
                         return Double.compare(scoreB, scoreA);
                     });
                 }
+
                 return ranked;
         }
     }
 
-    private Map<String, List<String>> extractDynamicAttributeFacets(List<NormalizedProductOfferDto> offers) {
+    private Map<String, List<String>> extractDynamicAttributeFacets(
+            List<NormalizedProductOfferDto> offers) {
+
         Map<String, List<String>> facets = new LinkedHashMap<>();
-        if (offers == null || offers.isEmpty()) return facets;
+
+        if (offers == null || offers.isEmpty()) {
+            return facets;
+        }
 
         Map<String, Set<String>> valuesByKey = new LinkedHashMap<>();
+
         Map<String, Integer> countByKey = new HashMap<>();
 
         for (NormalizedProductOfferDto offer : offers) {
+
             if (offer.getAttributes() != null) {
+
                 for (Map.Entry<String, String> entry : offer.getAttributes().entrySet()) {
+
                     String k = entry.getKey();
                     String v = entry.getValue();
+
                     if (k != null && v != null && !v.isBlank()) {
+
                         String cleanKey = k.trim();
-                        if (cleanKey.equalsIgnoreCase("Brand") || cleanKey.equalsIgnoreCase("Category")
-                                || cleanKey.equalsIgnoreCase("canonicalKey") || cleanKey.equalsIgnoreCase("ram")
-                                || cleanKey.equalsIgnoreCase("storage") || cleanKey.equalsIgnoreCase("color")) {
+
+                        if (cleanKey.equalsIgnoreCase("Brand")
+                                || cleanKey.equalsIgnoreCase("Category")
+                                || cleanKey.equalsIgnoreCase("canonicalKey")
+                                || cleanKey.equalsIgnoreCase("ram")
+                                || cleanKey.equalsIgnoreCase("storage")
+                                || cleanKey.equalsIgnoreCase("color")) {
+
                             continue;
                         }
-                        valuesByKey.computeIfAbsent(cleanKey, key -> new TreeSet<>(String.CASE_INSENSITIVE_ORDER)).add(v.trim());
-                        countByKey.put(cleanKey, countByKey.getOrDefault(cleanKey, 0) + 1);
+
+                        valuesByKey.computeIfAbsent(
+                                cleanKey,
+                                key -> new TreeSet<>(
+                                        String.CASE_INSENSITIVE_ORDER))
+                                .add(v.trim());
+
+                        countByKey.put(
+                                cleanKey,
+                                countByKey.getOrDefault(cleanKey, 0) + 1);
                     }
                 }
             }
         }
 
-        // Only include attribute facets if at least 2 products have it
         for (Map.Entry<String, Set<String>> entry : valuesByKey.entrySet()) {
+
             String key = entry.getKey();
+
             int count = countByKey.getOrDefault(key, 0);
-            if (count >= 2 && entry.getValue().size() >= 2 && entry.getValue().size() <= 15) {
-                facets.put(key, new ArrayList<>(entry.getValue()));
+
+            if (count >= 2
+                    && entry.getValue().size() >= 2
+                    && entry.getValue().size() <= 15) {
+
+                facets.put(
+                        key,
+                        new ArrayList<>(entry.getValue()));
             }
         }
 
@@ -644,23 +1096,36 @@ public class ProductSearchOrchestratorImpl implements ProductSearchOrchestrator 
     }
 
     private String cleanTitleForSuggestion(String title) {
-        if (title == null) return "";
+
+        if (title == null) {
+            return "";
+        }
+
         return title.replaceAll("\\s*\\([^)]*\\)", "")
                 .replaceAll("\\s*-[^-]*$", "")
                 .trim();
     }
 
     private String capitalizeWords(String str) {
-        if (str == null || str.isBlank()) return str;
+
+        if (str == null || str.isBlank()) {
+            return str;
+        }
+
         String[] words = str.split("\\s+");
+
         StringBuilder sb = new StringBuilder();
+
         for (String w : words) {
+
             if (!w.isBlank()) {
+
                 sb.append(Character.toUpperCase(w.charAt(0)))
                         .append(w.substring(1).toLowerCase(Locale.ROOT))
                         .append(" ");
             }
         }
+
         return sb.toString().trim();
     }
 }

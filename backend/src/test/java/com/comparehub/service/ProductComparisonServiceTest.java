@@ -1,3 +1,4 @@
+
 package com.comparehub.service;
 
 import com.comparehub.dto.NormalizedProductOfferDto;
@@ -43,9 +44,20 @@ class ProductComparisonServiceTest {
 
     @BeforeEach
     void setUp() {
-        ProductAttributeExtractor extractor = new ProductAttributeExtractorImpl();
-        ProductSimilarityService similarityService = new ProductSimilarityServiceImpl();
-        ProductMatchingService matchingService = new ProductMatchingServiceImpl(extractor, similarityService);
+        when(amazonProvider.getProviderName()).thenReturn("Amazon");
+        when(flipkartProvider.getProviderName()).thenReturn("Flipkart");
+
+        ProductAttributeExtractor extractor =
+                new ProductAttributeExtractorImpl();
+
+        ProductSimilarityService similarityService =
+                new ProductSimilarityServiceImpl();
+
+        ProductMatchingService matchingService =
+                new ProductMatchingServiceImpl(
+                        extractor,
+                        similarityService
+                );
 
         comparisonService = new ProductComparisonServiceImpl(
                 List.of(amazonProvider, flipkartProvider),
@@ -58,62 +70,122 @@ class ProductComparisonServiceTest {
 
     @Test
     void shouldAggregateOffersFromMultipleProviders() {
-        NormalizedProductOfferDto amazonOffer = NormalizedProductOfferDto.builder()
-                .productName("iPhone 15")
-                .merchant("Amazon")
-                .price(new BigDecimal("79900.00"))
-                .inStock(true)
-                .build();
 
-        NormalizedProductOfferDto flipkartOffer = NormalizedProductOfferDto.builder()
-                .productName("iPhone 15")
-                .merchant("Flipkart")
-                .price(new BigDecimal("78900.00"))
-                .inStock(true)
-                .isCheapest(true)
-                .build();
+        NormalizedProductOfferDto amazonOffer =
+                NormalizedProductOfferDto.builder()
+                        .productName("iPhone 15")
+                        .merchant("Amazon")
+                        .price(new BigDecimal("79900.00"))
+                        .inStock(true)
+                        .build();
 
-        when(amazonProvider.searchProducts("iphone")).thenReturn(List.of(amazonOffer));
-        when(flipkartProvider.searchProducts("iphone")).thenReturn(List.of(flipkartOffer));
-        when(normalizationService.normalizeOffers(any())).thenReturn(List.of(amazonOffer, flipkartOffer));
-        when(rankingService.rankAndMarkCheapest(any(), any())).thenReturn(List.of(flipkartOffer, amazonOffer));
-        when(rankingService.getRankingSummary(any())).thenReturn(RankingSummaryDto.builder().cheapest("Flipkart").build());
+        NormalizedProductOfferDto flipkartOffer =
+                NormalizedProductOfferDto.builder()
+                        .productName("iPhone 15")
+                        .merchant("Flipkart")
+                        .price(new BigDecimal("78900.00"))
+                        .inStock(true)
+                        .isCheapest(true)
+                        .build();
 
-        ProductComparisonResponseDto result = comparisonService.compareProducts(
-                "iphone", "all", "all", "all", null, null, false, "price_asc");
+        when(amazonProvider.searchProducts("iphone", 1, 50))
+                .thenReturn(List.of(amazonOffer));
+
+        when(flipkartProvider.searchProducts("iphone", 1, 50))
+                .thenReturn(List.of(flipkartOffer));
+
+        when(normalizationService.normalizeOffers(any()))
+                .thenReturn(List.of(amazonOffer, flipkartOffer));
+
+        when(rankingService.rankAndMarkCheapest(any(), any()))
+                .thenReturn(List.of(flipkartOffer, amazonOffer));
+
+        when(rankingService.getRankingSummary(any()))
+                .thenReturn(
+                        RankingSummaryDto.builder()
+                                .cheapest("Flipkart")
+                                .build()
+                );
+
+        ProductComparisonResponseDto result =
+                comparisonService.compareProducts(
+                        "iphone",
+                        "all",
+                        "all",
+                        "all",
+                        null,
+                        null,
+                        false,
+                        "price_asc"
+                );
 
         assertNotNull(result);
         assertEquals(2, result.getTotalOffers());
         assertEquals("Flipkart", result.getCheapestMerchant());
-        assertEquals(new BigDecimal("78900.00"), result.getCheapestPrice());
+        assertEquals(
+                new BigDecimal("78900.00"),
+                result.getCheapestPrice()
+        );
         assertEquals(2, result.getOffers().size());
     }
 
     @Test
     void shouldContinueComparisonWhenOneProviderFails() {
-        when(amazonProvider.getProviderName()).thenReturn("Amazon");
-        when(amazonProvider.searchProducts("iphone")).thenThrow(new RuntimeException("Amazon API connection timeout"));
 
-        NormalizedProductOfferDto flipkartOffer = NormalizedProductOfferDto.builder()
-                .productName("iPhone 15")
-                .merchant("Flipkart")
-                .price(new BigDecimal("78900.00"))
-                .inStock(true)
-                .isCheapest(true)
-                .build();
+        when(amazonProvider.searchProducts("iphone", 1, 50))
+                .thenThrow(
+                        new RuntimeException(
+                                "Amazon API connection timeout"
+                        )
+                );
 
-        when(flipkartProvider.searchProducts("iphone")).thenReturn(List.of(flipkartOffer));
-        when(normalizationService.normalizeOffers(any())).thenReturn(List.of(flipkartOffer));
-        when(rankingService.rankAndMarkCheapest(any(), any())).thenReturn(List.of(flipkartOffer));
-        when(rankingService.getRankingSummary(any())).thenReturn(RankingSummaryDto.builder().cheapest("Flipkart").build());
+        NormalizedProductOfferDto flipkartOffer =
+                NormalizedProductOfferDto.builder()
+                        .productName("iPhone 15")
+                        .merchant("Flipkart")
+                        .price(new BigDecimal("78900.00"))
+                        .inStock(true)
+                        .isCheapest(true)
+                        .build();
 
-        ProductComparisonResponseDto result = assertDoesNotThrow(() ->
-                comparisonService.compareProducts("iphone", "all", "all", "all", null, null, false, "best")
-        );
+        when(flipkartProvider.searchProducts("iphone", 1, 50))
+                .thenReturn(List.of(flipkartOffer));
+
+        when(normalizationService.normalizeOffers(any()))
+                .thenReturn(List.of(flipkartOffer));
+
+        when(rankingService.rankAndMarkCheapest(any(), any()))
+                .thenReturn(List.of(flipkartOffer));
+
+        when(rankingService.getRankingSummary(any()))
+                .thenReturn(
+                        RankingSummaryDto.builder()
+                                .cheapest("Flipkart")
+                                .build()
+                );
+
+        ProductComparisonResponseDto result =
+                assertDoesNotThrow(() ->
+                        comparisonService.compareProducts(
+                                "iphone",
+                                "all",
+                                "all",
+                                "all",
+                                null,
+                                null,
+                                false,
+                                "best"
+                        )
+                );
 
         assertNotNull(result);
         assertEquals(1, result.getTotalOffers());
-        assertEquals("Flipkart", result.getOffers().get(0).getMerchant());
-        assertTrue(result.getFailedProviders().contains("Amazon"));
+        assertEquals(
+                "Flipkart",
+                result.getOffers().get(0).getMerchant()
+        );
+        assertTrue(
+                result.getFailedProviders().contains("Amazon")
+        );
     }
 }

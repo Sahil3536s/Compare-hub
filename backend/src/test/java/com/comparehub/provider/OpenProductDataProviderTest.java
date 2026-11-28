@@ -1,45 +1,52 @@
+
 package com.comparehub.provider;
 
-import com.comparehub.dto.NormalizedProductOfferDto;
 import com.comparehub.provider.impl.OpenProductDataProvider;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.Spy;
-import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.web.client.RestClient;
-
-import java.util.List;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-@ExtendWith(MockitoExtension.class)
 class OpenProductDataProviderTest {
 
-    @Mock
-    private RestClient restClient;
+    private OpenProductDataProvider provider;
 
-    @Spy
-    private ObjectMapper objectMapper = new ObjectMapper();
+    @BeforeEach
+    void setUp() {
+        provider = new OpenProductDataProvider();
 
-    @InjectMocks
-    private OpenProductDataProvider openProductDataProvider;
-
-    @Test
-    void shouldReturnFallbackWhenExceptionOccurs() {
-        List<NormalizedProductOfferDto> fallbackResults = openProductDataProvider.fallbackSearch(
-                "iphone", new RuntimeException("API connection timeout"));
-
-        assertNotNull(fallbackResults);
-        assertFalse(fallbackResults.isEmpty());
-        assertEquals("OpenCommerce (Fallback)", fallbackResults.get(0).getMerchant());
-        assertEquals("Apple", fallbackResults.get(0).getBrand());
+        // Enable the provider for this test.
+        // It should still return no fabricated offers.
+        ReflectionTestUtils.setField(provider, "enabled", true);
     }
 
     @Test
-    void shouldIdentifyProviderName() {
-        assertEquals("OpenCommerce", openProductDataProvider.getProviderName());
+    void shouldReturnCorrectProviderName() {
+        assertEquals("OpenCommerce", provider.getProviderName());
+    }
+
+    @Test
+    void shouldReturnEmptyResultsWhenNoAuthorizedApiExists() {
+        assertNotNull(provider.searchProducts("iphone"));
+
+        assertTrue(provider.searchProducts("iphone").isEmpty());
+    }
+
+    @Test
+    void shouldReturnEmptyResultsFromFallback() {
+        assertNotNull(
+                provider.fallbackSearch(
+                        "iphone",
+                        new RuntimeException("API unavailable")
+                )
+        );
+
+        assertTrue(
+                provider.fallbackSearch(
+                        "iphone",
+                        new RuntimeException("API unavailable")
+                ).isEmpty()
+        );
     }
 }
